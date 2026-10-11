@@ -1,7 +1,10 @@
 # MacPigeon
 
-MacOS launcher for GamePigeon. Includes local play adapter.
-Some games have not been tested, most games adapters were made from tracing with ida without runtime tests, 1:1 runtime isnt 100% guaranteed to work for some. Feedback is appreciated. Crazy 8 def won't work for sure yet.
+macOS launcher for GamePigeon with local pass-and-play.
+
+Adapters are removed. Game data is now fed directly into the imported IPA.
+
+Some games have not been tested. Feedback is appreciated. Crazy 8 is not working yet.
 
 ## FAQ
 
@@ -65,7 +68,7 @@ Messages features require the relevant macOS permissions, account setup, and a m
 
 App data is stored under `~/Library/Application Support/MacPigeon`. On first launch, files from the historical `MacPigeon Lab` directory are copied into the new folder; existing destination files take precedence, and the old folder is retained as a recovery copy. Its `SelectedTest` subfolder becomes `Delivery`. Migration finishes before account or game helpers start, and an unsuccessful migration can be retried. Settings → Open Data Folder opens the folder in Finder. Account sessions and delivery keys remain in Keychain, and renderer data remains in its macOS sandbox container.
 
-This is an experimental project that uses Apple's private interfaces. Game support and online behavior vary by adapter; the source catalog is in `scripts/game_adapters.py` and `scripts/game_modes`.
+This is an experimental project that uses Apple's private interfaces. Game support and online behavior vary by game. The original screen catalog is in `scripts/game_catalog.py`; common message and session handling is in `scripts/game_messages.py` and `scripts/game_session.py`.
 
 ## Third-party code
 
