@@ -7,7 +7,7 @@ final class GameRuntime:ObservableObject {
     @Published var status=""
     @Published var revision=0
     private var installed:URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/MacPigeon/Installed/MacPigeon Game.app")
+        DataStorage.root.appendingPathComponent("Installed/MacPigeon Game.app")
     }
     var appURL:URL? {
         if FileManager.default.fileExists(atPath:installed.appendingPathComponent("Contents/Resources/local-import.json").path){return installed}

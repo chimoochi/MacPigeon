@@ -8,7 +8,7 @@ final class LocalPlay:ObservableObject {
     @Published private(set) var handoff=false
     private var generation=0
     private var loadAttempted=false
-    private let store=FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/MacPigeon/LocalPlay/current.json")
+    private let store=DataStorage.root.appendingPathComponent("LocalPlay/current.json")
     var ready:Bool {state["revision"] is String}
     var player:Int {state["own_player"] as? Int ?? 1}
     var finished:Bool {state["finished"] as? Bool == true}

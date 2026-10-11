@@ -436,12 +436,38 @@ struct NativeConnectionView:View {
                 Button(bridge.runtime.busy ? "Importing…" : "Import GamePigeon IPA…"){bridge.runtime.chooseIPA()}.disabled(bridge.runtime.busy)
                 if !bridge.runtime.status.isEmpty {Text(bridge.runtime.status).font(.caption).fixedSize(horizontal:false,vertical:true)}
                 Divider()
+                Button("Open Data Folder"){NSWorkspace.shared.open(DataStorage.root)}
                 Button("Save diagnostics…"){bridge.exportDiagnostics()}
             }.frame(maxWidth:.infinity,alignment:.leading)}
         }.padding(28).frame(width:420,height:500)
     }
 
 }
+private struct StorageStartupView: View {
+    @State private var ready = false
+    @State private var failed = false
+    @State private var preparing = false
+    var body: some View {
+        Group {
+            if ready { NativeConnectionView() }
+            else {
+                VStack(spacing: 16) {
+                    Text(failed ? "MacPigeon couldn’t prepare its data folder." : "Preparing your saved data…")
+                    if failed { Button("Try again", action: prepare).disabled(preparing) }
+                }.padding(28).frame(width: 420, height: 180)
+            }
+        }.onAppear { if !ready { prepare() } }
+    }
+    private func prepare() {
+        guard !preparing else { return }
+        preparing = true
+        DispatchQueue.global().async {
+            let success: Bool
+            do { try DataStorage.prepare(); success = true } catch { success = false }
+            DispatchQueue.main.async { preparing = false; failed = !success; ready = success }
+        }
+    }
+}
 @main struct NativeBridgeApp:App {
-    var body:some Scene {WindowGroup("MacPigeon"){NativeConnectionView()}.windowResizability(.contentSize)}
+    var body:some Scene {WindowGroup("MacPigeon"){StorageStartupView()}.windowResizability(.contentSize)}
 }

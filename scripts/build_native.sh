@@ -24,7 +24,7 @@ CARGO_TARGET_DIR="$root/build/transport-target" cargo build --locked --release \
 zsh "$root/scripts/build_host.sh"
 mkdir -p "$root/build/bin"
 xcrun swiftc -O -target arm64-apple-macos14.0 -parse-as-library \
-  "$root/source/Board.swift" "$root/source/Account.swift" "$root/source/MessagesContext.swift" \
+  "$root/source/DataStorage.swift" "$root/source/Board.swift" "$root/source/Account.swift" "$root/source/MessagesContext.swift" \
   "$root/source/NativeMove.swift" "$root/source/GameImporter.swift" "$root/source/GameRuntime.swift" \
   "$root/source/GameBubbleOpener.swift" "$root/source/LocalPlay.swift" "$root/source/SetupFlow.swift" \
   "$root/source/NativeBridge.swift" -framework SwiftUI -framework AppKit -framework Security \

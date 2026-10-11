@@ -5,7 +5,7 @@ from urllib.parse import quote
 from connect_codec import objc_int, query_items, transform
 import game_adapters as adapters
 
-SUPPORT=Path.home()/'Library/Application Support/MacPigeon Lab'
+SUPPORT=Path.home()/'Library/Application Support/MacPigeon'
 STORE=SUPPORT/'Games/current.json'
 
 def read(path):
@@ -58,7 +58,7 @@ def validate(state):
 
 def load():
     if STORE.exists(): return validate(read(STORE))
-    old=SUPPORT/'SelectedTest'
+    old=SUPPORT/'Delivery'
     sent=read(old/'mac-reply-candidate-private.json');received=read(old/'live-selected-game-private.json');selector=read(old/'mac-test-selector.json')
     state=validate(dict(version=1,recipient='tel:'+selector['sender'],session_hex=sent['session_identifier_hex'],own_url=sent['url'],url=received['url'],wire=base64.b64encode((old/'rustpush-candidate-balloon.bin').read_bytes()).decode(),pending=False))
     write(state); return state

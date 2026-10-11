@@ -270,7 +270,7 @@ final class AccountConnection: ObservableObject {
         if let idsFailureStage { report["ids_failure_stage"] = idsFailureStage }
         if let idsFailureCode { report["ids_failure_code"] = idsFailureCode }
         guard let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return }
-        let directory = support.appendingPathComponent("MacPigeon Lab", isDirectory: true)
+        let directory = support.appendingPathComponent("MacPigeon", isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             let url = directory.appendingPathComponent("account-status.json")

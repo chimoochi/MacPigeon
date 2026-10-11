@@ -50,7 +50,7 @@ impl LocalWorker {
             let python = std::fs::read_to_string(resources.join("python-runtime-path.txt"))?;
             let home = std::env::var("HOME").map_err(|_|AnisetteError::MissingLibraries)?;
             let python=if python.trim()=="@bundled" {resources.join("python-runtime")}else{PathBuf::from(python.trim())};
-            (python, resources.join("local_anisette_worker.py"), resources.join("apple-music-arm64-libs.zip"), PathBuf::from(home).join("Library/Application Support/MacPigeon Lab/Anisette"))
+            (python, resources.join("local_anisette_worker.py"), resources.join("apple-music-arm64-libs.zip"), PathBuf::from(home).join("Library/Application Support/MacPigeon/Anisette"))
         } else {
             return Err(AnisetteError::MissingLibraries);
         };
@@ -369,7 +369,7 @@ async fn main() {
                     worker_called=true;
                     let mut sent=delivery::worker(json!({"action":"send_turn","state":transport_saved.as_ref().unwrap()["backend"],"keychain_saved":true,"one_test_send_authorized":true,"replace_template_url":true,
                         "recipient":game["recipient"],"wire":game["wire"],"url":game["url"],"session_hex":game["session_hex"],"validation":validation,
-                        "support_directory":PathBuf::from(std::env::var("HOME").map_err(|_|ids_access::fail("support_path"))?).join("Library/Application Support/MacPigeon Lab/Transport")}))?;
+                        "support_directory":PathBuf::from(std::env::var("HOME").map_err(|_|ids_access::fail("support_path"))?).join("Library/Application Support/MacPigeon/Transport")}))?;
                     if sent["state"].is_string(){transport_saved.as_mut().unwrap()["backend"]=sent["state"].take();}
                     transport_saved.as_mut().unwrap()["game_send"]["recipient_transport_acknowledged"]=sent["recipient_transport_acknowledged"].clone();
                     transport_saved.as_mut().unwrap()["game_send"]["confirmed_not_submitted"]=sent["confirmed_not_submitted"].clone();
@@ -396,7 +396,7 @@ async fn main() {
                     let validation=ids_access::validation_data().await?;
                     let exclusions=game["seen_url_hashes"].clone();
                     let mut received=delivery::worker(json!({"action":"receive_test","state":saved["backend"],"keychain_saved":true,"test_receive_authorized":true,"recipient":game["recipient"],"session_hex":game["session_hex"],"validation":validation,"excluded_url_hashes":exclusions,
-                        "support_directory":PathBuf::from(std::env::var("HOME").map_err(|_|ids_access::fail("support_path"))?).join("Library/Application Support/MacPigeon Lab/Transport")}))?;
+                        "support_directory":PathBuf::from(std::env::var("HOME").map_err(|_|ids_access::fail("support_path"))?).join("Library/Application Support/MacPigeon/Transport")}))?;
                     if received["state"].is_string(){transport_saved.as_mut().unwrap()["backend"]=received["state"].take();save_transport_ack(&account,transport_saved.as_ref().unwrap(),&mut input)?;}
                     if received["ok"]==true {
                         game=delivery::game(json!({"action":"receive","url":received["url"]}))?;
@@ -414,13 +414,13 @@ async fn main() {
                     if !saved["test_send"].is_null()&&!saved["test_send"]["confirmed_not_submitted"].as_bool().unwrap_or(false) {
                         // One-time development migration for the observed pre-parser-fix
                         // failure. It returned before IMClient.send, as recorded locally.
-                        let proof=PathBuf::from(std::env::var("HOME").map_err(|_|ids_access::fail("support_path"))?).join("Library/Application Support/MacPigeon Lab/SelectedTest/mac-unsent-preflight-proof.json");
+                        let proof=PathBuf::from(std::env::var("HOME").map_err(|_|ids_access::fail("support_path"))?).join("Library/Application Support/MacPigeon/Delivery/mac-unsent-preflight-proof.json");
                         let proof=std::fs::read(proof).ok().filter(|b|b.len()<4096).and_then(|b|serde_json::from_slice::<Value>(&b).ok());
                         let safe=proof.as_ref().map(|p|p["source"]=="observed_previous_worker_preflight"&&p["confirmed_not_submitted"]==true&&p["send_called"]==false&&p["failure_stage"]=="push_connection_failed"&&p["wire_sha256"]==saved["test_send"]["wire_sha256"]).unwrap_or(false);
                         if !safe {return Err(ids_access::fail("test_already_attempted"));}
                     }
                     let home=std::env::var("HOME").map_err(|_|ids_access::fail("support_path"))?;
-                    let folder=PathBuf::from(home).join("Library/Application Support/MacPigeon Lab/SelectedTest");
+                    let folder=PathBuf::from(home).join("Library/Application Support/MacPigeon/Delivery");
                     let read=|name:&str|->Result<Vec<u8>,ids_access::Failure>{
                         let p=folder.join(name);
                         if std::fs::metadata(&p).map_err(|_|ids_access::fail("test_fixture"))?.len()>262144 {return Err(ids_access::fail("test_fixture_limit"));}
@@ -443,13 +443,13 @@ async fn main() {
                     worker_called=true;
                     let mut sent=delivery::worker(json!({"action":"send_turn","state":transport_saved.as_ref().unwrap()["backend"],"keychain_saved":true,"one_test_send_authorized":true,
                         "recipient":format!("tel:{friend}"),"wire":STANDARD.encode(wire),"url":candidate["url"],"session_hex":candidate["session_identifier_hex"],"validation":validation,
-                        "support_directory":PathBuf::from(home).join("Library/Application Support/MacPigeon Lab/Transport")}))?;
+                        "support_directory":PathBuf::from(home).join("Library/Application Support/MacPigeon/Transport")}))?;
                     if sent["state"].is_string() {transport_saved.as_mut().unwrap()["backend"]=sent["state"].take();}
                     transport_saved.as_mut().unwrap()["test_send"]["recipient_transport_acknowledged"]=sent["recipient_transport_acknowledged"].clone();
                     transport_saved.as_mut().unwrap()["test_send"]["confirmed_not_submitted"]=sent["confirmed_not_submitted"].clone();
                     // Consume migration proof before any future retry decision. A
                     // started/unknown send never gains the no-submit guarantee.
-                    let proof=PathBuf::from(std::env::var("HOME").map_err(|_|ids_access::fail("support_path"))?).join("Library/Application Support/MacPigeon Lab/SelectedTest/mac-unsent-preflight-proof.json");
+                    let proof=PathBuf::from(std::env::var("HOME").map_err(|_|ids_access::fail("support_path"))?).join("Library/Application Support/MacPigeon/Delivery/mac-unsent-preflight-proof.json");
                     let _=std::fs::rename(&proof,proof.with_extension("consumed.json"));
                     save_transport_ack(&account,transport_saved.as_ref().unwrap(),&mut input)?;
                     let acknowledged=sent["recipient_transport_acknowledged"]==true;
@@ -466,14 +466,14 @@ async fn main() {
                     let saved=transport_saved.as_ref().ok_or(ids_access::fail("saved_identity_required"))?;
                     if !saved["backend"].is_string() {return Err(ids_access::fail("registered_identity_required"));}
                     let home=std::env::var("HOME").map_err(|_|ids_access::fail("support_path"))?;
-                    let folder=PathBuf::from(&home).join("Library/Application Support/MacPigeon Lab/SelectedTest");
+                    let folder=PathBuf::from(&home).join("Library/Application Support/MacPigeon/Delivery");
                     let read=|name:&str|->Result<Value,ids_access::Failure>{let p=folder.join(name);if std::fs::metadata(&p).map_err(|_|ids_access::fail("test_fixture"))?.len()>262144{return Err(ids_access::fail("test_fixture_limit"));}let b=std::fs::read(p).map_err(|_|ids_access::fail("test_fixture"))?;serde_json::from_slice(&b).map_err(|_|ids_access::fail("test_fixture_schema"))};
                     let selector=read("mac-test-selector.json")?;let candidate=read("mac-reply-candidate-private.json")?;
                     let friend=selector["sender"].as_str().filter(|s|s.starts_with('+')&&s[1..].bytes().all(|b|b.is_ascii_digit())).ok_or(ids_access::fail("test_recipient"))?;
                     save_transport_ack(&account,saved,&mut input)?;
                     let validation=ids_access::validation_data().await?;
                     let mut received=delivery::worker(json!({"action":"receive_test","state":saved["backend"],"keychain_saved":true,"test_receive_authorized":true,"recipient":format!("tel:{friend}"),"session_hex":candidate["session_identifier_hex"],"validation":validation,
-                        "support_directory":PathBuf::from(&home).join("Library/Application Support/MacPigeon Lab/Transport")}))?;
+                        "support_directory":PathBuf::from(&home).join("Library/Application Support/MacPigeon/Transport")}))?;
                     if received["ok"]==true {
                         // Save the authorized matching URL before any renderer or
                         // Keychain operation can fail. It contains no other message.
