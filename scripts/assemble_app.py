@@ -49,8 +49,8 @@ for name in names:
 (resources / 'push-bootstrap-manifest.json').write_text(json.dumps(manifest))
 info = {'CFBundleIdentifier': 'local.macpigeon.native', 'CFBundleName': 'MacPigeon',
         'CFBundleExecutable': 'NativeBridge', 'CFBundlePackageType': 'APPL',
-        'CFBundleVersion': os.environ.get('MACPIGEON_BUILD_VERSION', '4'),
-        'CFBundleShortVersionString': os.environ.get('MACPIGEON_VERSION', '0.1.0-alpha.3'),
+        'CFBundleVersion': os.environ.get('MACPIGEON_BUILD_VERSION', '5'),
+        'CFBundleShortVersionString': os.environ.get('MACPIGEON_VERSION', '0.1.0-alpha.4'),
         'LSMinimumSystemVersion': '26.0',
         'NSContactsUsageDescription': 'Find the address for the one contact name shown in your open Messages conversation.'}
 (app / 'Contents/Info.plist').write_bytes(plistlib.dumps(info))

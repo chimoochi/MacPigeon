@@ -78,6 +78,11 @@ class NoRedirects(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def https_opener():
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirects(),
+        urllib.request.HTTPSHandler(context=create_context()))
+
+
 def read_exact(stream, size):
     data = bytearray()
     while len(data) < size:
@@ -94,7 +99,7 @@ def frame(command_id, fields):
 
 
 def connect_push(folder, own, device_cert, report):
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirects())
+    opener = https_opener()
     with opener.open('https://init.push.apple.com/bag',timeout=15) as response:
         data = response.read(1048577)
     if len(data)>1048576:
@@ -207,8 +212,7 @@ def probe(live, connect=False, private_worker=False):
             request = urllib.request.Request(ENDPOINT, data=encoded, headers={
                 'User-Agent':'ApplePushService/4.0 com.apple.iCloudHelper/282',
                 'Content-Type':'application/x-www-form-urlencoded'})
-            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirects(),
-                urllib.request.HTTPSHandler(context=create_context()))
+            opener = https_opener()
             report['activation_requests'] = 1
             try:
                 response = opener.open(request,timeout=25)

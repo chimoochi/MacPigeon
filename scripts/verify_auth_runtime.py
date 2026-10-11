@@ -29,7 +29,14 @@ assert context.verify_mode == ssl.CERT_REQUIRED and context.check_hostname
 assert context.cert_store_stats()['x509_ca'] > 100
 assert resources in Path(certifi.where()).resolve().parents
 for name in ('local_anisette_worker.py', 'push_bootstrap_worker.py'):
-    runpy.run_path(str(resources / name), run_name='packaged_import_check')
+    worker = runpy.run_path(str(resources / name), run_name='packaged_import_check')
+    if name == 'push_bootstrap_worker.py':
+        import urllib.request
+        handler = next(h for h in worker['https_opener']().handlers
+                       if isinstance(h, urllib.request.HTTPSHandler))
+        assert handler._context.verify_mode == ssl.CERT_REQUIRED
+        assert handler._context.check_hostname
+        assert handler._context.cert_store_stats()['x509_ca'] > 100
 ani = Anisette.init(resources / 'apple-music-arm64-libs.zip')
 assert not ani.is_provisioned
 ani.save_libs(Path(sys.argv[2]) / 'libraries.bin')
