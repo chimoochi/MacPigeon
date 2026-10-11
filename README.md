@@ -3,15 +3,25 @@
 MacOS launcher for GamePigeon. Includes local play adapter.
 Some games have not been tested, most games adapters were made from tracing with ida wihtout runtime tests, 1:1 runtime isnt 100% guaranteed to work for some. Feedback is appreciated. Crazy 8 def wont wont work yet.
 
-FAQ
-Q: How do I get an decrypted IPA?
+## FAQ
+
+<details>
+<summary><strong>Q: How do I get an decrypted IPA?</strong></summary>
+
 A: from prolly armconverter, or [my telegram](https://t.me/+t-YuZwZqudw1MTc5).
+</details>
 
-Q: Is this safe?
+<details>
+<summary><strong>Q: Is this safe?</strong></summary>
+
 A: ur data goes to only apple for imessage login so the app could send the game pigeon text package to ur friends. The accessibility and full disk access are for fetching ur messages to get the app. GamePigeon does send their own data to their servers, but it is not your imessage login.
+</details>
 
-Q: Does it support local play?
+<details>
+<summary><strong>Q: Does it support local play?</strong></summary>
+
 A: Yuh, with pass and play, one window. Support for a few games may vary lowk.
+</details>
 
 ## Build
 
