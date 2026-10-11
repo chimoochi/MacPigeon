@@ -46,4 +46,4 @@ This is an experimental project that uses Apple's private interfaces. Game suppo
 
 ## Third-party code
 
-See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the included license files. No new license has been selected for the original MacPigeon code; the included third-party code retains its own licenses. GamePigeon and Apple assets are supplied locally and have not been licensed by this repository.
+The MacPigeon-authored material covered by [LICENSE](LICENSE) uses Apache 2.0 with the Commons Clause. The required attribution is `Copyright 2026 chimoochi`; recipients must retain the notice and license. The Commons Clause restricts selling MacPigeon or a product or service whose value derives substantially from it. This is source-available, not OSI-approved open source. Third-party components keep their own terms; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). GamePigeon and Apple assets are supplied locally and have not been licensed by this repository.
