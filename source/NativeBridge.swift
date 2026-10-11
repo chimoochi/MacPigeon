@@ -29,6 +29,8 @@ final class NativeTransport: ObservableObject {
     @Published var verifyLastConversation = false
     private var pendingNewConversationName:String?
     private var pendingNewOptions:[String:String]=[:]
+    private var pendingNewInvitation:[String:String]?
+    private var invitationSending=false
     private var pendingNewRecipient:String?
     private var pendingNewName=""
     private var pendingNewID:String?
@@ -74,7 +76,7 @@ final class NativeTransport: ObservableObject {
     func setLocalMode(_ enabled:Bool){
         guard enabled != localMode else{return}
         localMode=enabled;UserDefaults.standard.set(enabled,forKey:"localPlayMode")
-        connectionID=UUID().uuidString;cancelNewGame();pendingNativeRequest=nil;pendingImport=nil;pendingResume=nil;importer.presented=false;openAfterImport=false
+        connectionID=UUID().uuidString;cancelNewGame();invitationSending=false;pendingNativeRequest=nil;pendingImport=nil;pendingResume=nil;importer.presented=false;openAfterImport=false
         if let data=try? Data(contentsOf:directory.appendingPathComponent("native-menu-request.json")),data.count<262144 {menuRequestID=((try? JSONSerialization.jsonObject(with:data)) as? [String:Any])?["id"] as? String}
         account.setGamePollingEnabled(false);bubbleOpener.enabled=false
         if enabled {account.disconnect();accountStarted=false;local.load()}
@@ -83,7 +85,7 @@ final class NativeTransport: ObservableObject {
     }
     func openLocalGame(){guard localMode,local.ready,setupStep == .ready,let app=runtime.appURL else{return};write(["id":UUID().uuidString,"view":"board"],name:"native-view.json");NSWorkspace.shared.openApplication(at:app,configuration:NSWorkspace.OpenConfiguration()){_,_ in}}
     func connect() { guard !localMode else{return};disconnected=false; if !accountStarted {accountStarted=true;account.start()} else if !account.busy && !["login","code","sms_choice"].contains(account.phase) {account.connectDelivery()} }
-    func disconnect() {disconnected=true;accountStarted=false;account.disconnect();state=[:];tick()}
+    func disconnect() {disconnected=true;accountStarted=false;invitationSending=false;openAfterImport=false;cancelNewGame();account.disconnect();state=[:];tick()}
     func openCurrentChatGame(){
         guard !localMode,setupStep == .ready else{return}
         guard let recipient=try? MessagesContext.currentHandle() else{
@@ -95,12 +97,15 @@ final class NativeTransport: ObservableObject {
     func selectGame(_ choice:ImportChoice){guard !localMode else{return};pendingImport=choice;importer.status="Waiting for the current connection check to finish…";tick()}
     func resumeGame(_ game:SavedGame){guard !localMode else{return};pendingResume=game;importer.status="Waiting for the current connection check to finish…";tick()}
     func cancelImport(){pendingImport=nil;pendingResume=nil;importer.presented=false}
-    func cancelNewGame(){pendingNewGame=nil;pendingNewOptions=[:];pendingNewRecipient=nil;pendingNewConversationName=nil;pendingNewID=nil;write([:],name:"native-invitation-prompt.json")}
+    func cancelNewGame(){pendingNewGame=nil;pendingNewOptions=[:];pendingNewInvitation=nil;pendingNewRecipient=nil;pendingNewConversationName=nil;pendingNewID=nil;write([:],name:"native-invitation-prompt.json")}
     func confirmNewGame(){
         guard !localMode,setupStep == .ready else{cancelNewGame();return}
         guard let game=pendingNewGame,let recipient=pendingNewRecipient else{return}
-        let options=pendingNewOptions;cancelNewGame()
-        if account.startGame(game:game,options:options,recipient:recipient){state=[:];gameSyncReady=false;openAfterImport=true}
+        let options=pendingNewOptions;let invitation=pendingNewInvitation;cancelNewGame()
+        if account.startGame(game:game,options:options,recipient:recipient,invitation:invitation){
+            state=[:];gameSyncReady=false;openAfterImport=true;invitationSending=true
+            write(["id":UUID().uuidString,"connection_id":connectionID,"title":"Sending invitation","notice":account.gameStatus,"expires_at":Date().timeIntervalSince1970+120],name:"native-invitation-prompt.json")
+        }
         else{write(["id":UUID().uuidString,"connection_id":connectionID,"error":"Return to the verified Messages conversation, then try again.","expires_at":Date().timeIntervalSince1970+15],name:"native-invitation-prompt.json")}
     }
     var newGameTitle:String { GameCatalog.titles[pendingNewGame ?? ""] ?? "Game" }
@@ -160,6 +165,12 @@ final class NativeTransport: ObservableObject {
     }
     func tick() {
         if localMode {tickLocal();return}
+        if invitationSending && !account.busy && ["game_sent","game_error","error"].contains(account.phase) {
+            invitationSending=false
+            var result:[String:Any]=["id":UUID().uuidString,"connection_id":connectionID,"title":"Invitation status","notice":account.gameStatus,"expires_at":Date().timeIntervalSince1970+30]
+            if account.phase != "game_sent" {openAfterImport=false;result["error"]=account.phase == "error" ? account.status : account.gameStatus;result.removeValue(forKey:"notice")}
+            write(result,name:"native-invitation-prompt.json")
+        }
         permissionGranted=MessagesContext.allowed
         checkDiskAccess()
         if !accountStarted && !disconnected {connect()}
@@ -191,7 +202,7 @@ final class NativeTransport: ObservableObject {
         if let data=try? Data(contentsOf:menuURL),data.count<262144,let request=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],let id=request["id"] as? String,id != menuRequestID {
             menuRequestID=id
             if let game=request["game"] as? String,GameCatalog.titles[game] != nil,setupStep == .ready,account.phoneAuthorized,!importer.busy,(!account.busy || account.receivingGame),let name=MessagesContext.conversationName(),!name.isEmpty {
-                pendingNewGame=game;pendingNewOptions=request["options"] as? [String:String] ?? [:];pendingNewRecipient=currentRecipient;pendingNewConversationName=currentRecipient == nil ? name : nil;pendingNewName=currentRecipient == nil ? name : opponentDisplay;pendingNewID=UUID().uuidString
+                pendingNewGame=game;pendingNewOptions=request["options"] as? [String:String] ?? [:];pendingNewInvitation=request["invitation"] as? [String:String];pendingNewRecipient=currentRecipient;pendingNewConversationName=currentRecipient == nil ? name : nil;pendingNewName=currentRecipient == nil ? name : opponentDisplay;pendingNewID=UUID().uuidString
             }else{write(["id":UUID().uuidString,"connection_id":connectionID,"error":"Connect your account and verify the open Messages conversation first.","expires_at":Date().timeIntervalSince1970+15],name:"native-invitation-prompt.json")}
         }
         if let id=pendingNewID {

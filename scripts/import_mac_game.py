@@ -124,13 +124,15 @@ def selected(request,database,serialize=wire):
             # An actual sent bubble establishes the local token; don't invent it from a number.
             if out:owns.append((int(fields['num']),item['url']))
             if 'start' not in fields:turns.append((int(fields['num']),item['url'],bool(out)))
-    joining=False
+    joining=False;local_player_id=None
     if owns:own=max(owns,key=lambda p:p[0])[1]
     elif 'start' in f:
-        try:own=gs.load()['own_url'];joining=True
-        except (OSError,ValueError,KeyError):raise ValueError('own_reference_required')
+        previous=gs.invitation_context()
+        local_player_id=previous['own_id'] if previous else uuid.uuid4().hex
+        if local_player_id==f.get('player2'):local_player_id=uuid.uuid4().hex
+        own=None;joining=True
     else:raise ValueError('own_reference_required')
-    state=gs.validate(dict(version=2,recipient=recipient,session_hex=session.hex,own_url=own,url=picked['url'],pending=False,wire='',joining=joining))
+    state=gs.validate(dict(version=2,recipient=recipient,session_hex=session.hex,own_url=own,url=picked['url'],pending=False,wire='',joining=joining,local_player_id=local_player_id))
     if bool(chosen['outgoing'])!=(int(f['player'])==state['own_player']):raise ValueError('sender_identity')
     for num,url,out in sorted(turns,key=lambda p:p[0]):
         if num<int(state['board']['num']):continue

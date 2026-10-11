@@ -5,7 +5,7 @@ from sync_selected_game import synchronize
 from game_catalog import REALTIME_GAMES
 try:
  sync=synchronize() if "--sync" in sys.argv else {"status":"deferred"}
- s=load();own=fields(s['own_url']);url=unwrap(s['url'])
+ s=load();url=unwrap(s['url'])
  print(json.dumps({'game':s['board']['game'],'realtime':s['board']['game'] in REALTIME_GAMES,'kind':s['board']['kind'],'url':url,'recipient':s['recipient'],'own_id':s['own_id'],'own_player':s['own_player'],'num':int(s['board']['num']),'finished':s['finished'],'winner':s['winner'],'draw':s['draw'],'revision':hashlib.sha256(s['url'].encode()).hexdigest(),'sync_status':sync['status'],'sync_stage':sync.get('stage')}))
 except Exception:
  print('{}');sys.exit(2)

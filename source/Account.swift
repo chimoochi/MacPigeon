@@ -1,6 +1,28 @@
 import AppKit
 import SwiftUI
 import Security
+import CryptoKit
+
+struct SessionSaveCache {
+    private var savedDigest:Data?
+    private func digest(_ data:Data)->Data? {
+        guard let object=try? JSONSerialization.jsonObject(with:data),
+              let canonical=try? JSONSerialization.data(withJSONObject:object,options:[.sortedKeys]) else{return nil}
+        return Data(SHA256.hash(data:canonical))
+    }
+    func needsSave(_ data:Data)->Bool {
+        guard let value=digest(data) else{return true}
+        return savedDigest != value
+    }
+    mutating func remember(_ data:Data){savedDigest=digest(data)}
+    mutating func clear(){savedDigest=nil}
+    mutating func save(_ data:Data,perform:(Data)->OSStatus)->OSStatus {
+        guard needsSave(data) else{return errSecSuccess}
+        let result=perform(data)
+        if result==errSecSuccess {remember(data)}
+        return result
+    }
+}
 
 final class AccountConnection: ObservableObject {
     @Published var phase = "starting"
@@ -10,6 +32,9 @@ final class AccountConnection: ObservableObject {
     private var process: Process?
     private var input: FileHandle?
     private let keychainQueue = DispatchQueue(label: "local.macpigeon.account.keychain")
+    // Accessed only on keychainQueue; keep a digest, never another session copy.
+    private var sessionSaveCache=SessionSaveCache()
+    private var restoringGeneration:Int?
     private let queue = DispatchQueue(label: "local.macpigeon.account.pipe")
     private let service = "local.macpigeon.lab.account"
     private let key = "experimental-session"
@@ -42,7 +67,7 @@ final class AccountConnection: ObservableObject {
     private var receiveFailures = 0
     @Published private(set) var receivingGame = false
     private var gamePollingEnabled = true
-    private var queuedInvitation:(game:String,options:[String:String],recipient:String)?
+    private var queuedInvitation:(game:String,options:[String:String],recipient:String,invitation:[String:String]?)?
     private var helperGeneration=0
     init(startImmediately: Bool = true) { if startImmediately { start() } else { busy=false; phase="idle"; status="Ready to connect your account." } }
     private var query: [String: Any] {
@@ -121,17 +146,22 @@ final class AccountConnection: ObservableObject {
             guard let object = event["data"], let data = try? JSONSerialization.data(withJSONObject: object) else { return }
             let needsAck = event["await_transport_ack"] as? Bool ?? false
             let lookup = query
+            let generation=helperGeneration
             keychainQueue.async { [weak self] in
-                let update = [kSecValueData as String: data]
-                var result = SecItemUpdate(lookup as CFDictionary, update as CFDictionary)
-                if result == errSecItemNotFound {
-                    var addition = lookup
-                    addition[kSecValueData as String] = data
-                    addition[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-                    result = SecItemAdd(addition as CFDictionary, nil)
+                guard let self else{return}
+                let result=self.sessionSaveCache.save(data){value in
+                    let update = [kSecValueData as String: value]
+                    var result = SecItemUpdate(lookup as CFDictionary, update as CFDictionary)
+                    if result == errSecItemNotFound {
+                        var addition = lookup
+                        addition[kSecValueData as String] = value
+                        addition[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+                        result = SecItemAdd(addition as CFDictionary, nil)
+                    }
+                    return result
                 }
                 DispatchQueue.main.async {
-                    guard let self else { return }
+                    guard self.helperGeneration==generation else { return }
                     if result != errSecSuccess { self.status = "The app’s keys couldn’t be saved in Keychain. Delivery registration is blocked." }
                     if needsAck { self.send(["action": "transport_state_saved", "success": result == errSecSuccess]) }
                 }
@@ -231,17 +261,23 @@ final class AccountConnection: ObservableObject {
     func applyFixture(_ event:[String:Any]){receive(event)}
     #endif
     func restoreSession() {
+        guard restoringGeneration != helperGeneration else{return}
+        let generation=helperGeneration
+        restoringGeneration=generation
         busy = true; status = "Restoring your sign-in…"
         var lookup = query
         lookup[kSecReturnData as String] = true
         lookup[kSecMatchLimit as String] = kSecMatchLimitOne
         // Keychain may display a system prompt. Keep the app’s main thread responsive.
         keychainQueue.async { [weak self] in
+            guard let self else{return}
             var result: CFTypeRef?
             let code = SecItemCopyMatching(lookup as CFDictionary, &result)
             let data = result as? Data
+            if code == errSecSuccess,let data {self.sessionSaveCache.remember(data)}
             DispatchQueue.main.async {
-                guard let self else { return }
+                if self.restoringGeneration==generation {self.restoringGeneration=nil}
+                guard self.helperGeneration==generation else { return }
                 if code == errSecSuccess, let data,
                    let saved = try? JSONSerialization.jsonObject(with: data) {
                     self.send(["action": "restore", "data": saved])
@@ -285,7 +321,7 @@ final class AccountConnection: ObservableObject {
         guard let input,process?.isRunning==true else{busy=false;canPlayGame=false;phase="error";status="Connection stopped. Reconnect to check game progress.";return}
         guard var data = try? JSONSerialization.data(withJSONObject: object) else { return }
         data.append(10)
-        do { try input.write(contentsOf: data) } catch { status = "Connection stopped. Reconnect to check game progress."; busy = false;canPlayGame=false }
+        do { try input.write(contentsOf: data) } catch { phase="error";status = "Connection stopped. Reconnect to check game progress."; busy = false;canPlayGame=false }
     }
     func login(email: String, password: String) { busy = true; status = "Authenticating with Apple…"; send(["action": "login", "email": email, "password": password]) }
     func verify(code: String) { busy = true; status = "Verifying with Apple…"; send(["action": "verify", "code": code]) }
@@ -306,17 +342,19 @@ final class AccountConnection: ObservableObject {
         #endif
         return try? MessagesContext.currentHandle()
     }
-    @discardableResult func startGame(game:String,options:[String:String],recipient:String)->Bool {
+    @discardableResult func startGame(game:String,options:[String:String],recipient:String,invitation:[String:String]?=nil)->Bool {
         guard (!busy || receivingGame),queuedInvitation==nil,phoneAuthorized,invitationRecipient()==recipient else{return false}
         receiveAgain?.cancel()
-        if receivingGame {queuedInvitation=(game,options,recipient);gameStatus="Finishing the current connection check…";status=gameStatus;return true}
+        if receivingGame {queuedInvitation=(game,options,recipient,invitation);gameStatus="Finishing the current connection check…";status=gameStatus;return true}
         busy=true;canPlayGame=false;gameStatus="Sending invitation…"
-        send(["action":"start_game","game":game,"options":options,"recipient":recipient]);return true
+        var request:[String:Any]=["action":"start_game","game":game,"options":options,"recipient":recipient]
+        if let invitation {request["native_invitation"]=invitation}
+        send(request);return true
     }
     private func runQueuedInvitation()->Bool {
         guard let pending=queuedInvitation else{return false}
         queuedInvitation=nil
-        if !startGame(game:pending.game,options:pending.options,recipient:pending.recipient) {
+        if !startGame(game:pending.game,options:pending.options,recipient:pending.recipient,invitation:pending.invitation) {
             phase="game_error";gameStatus="The conversation changed. Open your intended chat and try again.";status=gameStatus
         }
         return true
@@ -352,7 +390,10 @@ final class AccountConnection: ObservableObject {
     }
     func forget() {
         if deliveryKeysSaved { status = "Delivery keys are retained until this identity can be unregistered safely."; return }
-        SecItemDelete(query as CFDictionary)
+        let lookup=query
+        keychainQueue.async {[weak self] in
+            if SecItemDelete(lookup as CFDictionary)==errSecSuccess {self?.sessionSaveCache.clear()}
+        }
         send(["action": "quit"])
         phase = "login"; status = "Local session removed. Reopen the app to sign in again."
     }

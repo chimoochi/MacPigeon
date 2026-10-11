@@ -33,15 +33,29 @@ def prepare(current,recipient,game,options,serializer=serialize):
     state=validate(dict(version=2,recipient=recipient,session_hex=session,own_url=url,url=url,pending=True,parent_url=current['url'],new_invitation=True))
     state['wire']=serializer(url,session,GAMES[game][0]);return state
 
+def prepare_original(current,recipient,game,output,serializer=serialize):
+    from game_session import validate
+    from game_messages import checked_fields
+    output=checked_fields(output)
+    if not re.fullmatch(r'tel:\+\d{7,15}',recipient):raise ValueError('recipient')
+    if output.get('game')!=game or game not in GAMES or output.get('num')!='1' or output.get('player')!='2' or 'start' not in output or not output.get('id') or not output.get('avatar2'):raise ValueError('original_invitation')
+    if current is not None:current=validate(dict(current))
+    url=encoded_url(output);session=str(uuid.uuid4())
+    state=validate(dict(version=2,recipient=recipient,session_hex=session,own_url=url,url=url,pending=True,parent_url=current['url'] if current else '',new_invitation=True,native_invitation=True))
+    state['wire']=serializer(url,session,GAMES[game][0])
+    return state
+
 def commit(current,proposed):
     from game_session import validate,fields
-    current=validate(dict(current));proposed=validate(dict(proposed))
-    if not proposed.get('new_invitation') or proposed['board']['kind']!='invitation' or proposed['own_id']!=current['own_id'] or proposed.get('parent_url')!=current['url']:raise ValueError('invitation_binding')
-    if fields(proposed['url']).get('player2')!=current['own_id']:raise ValueError('identity')
+    if current is not None:current=validate(dict(current))
+    proposed=validate(dict(proposed))
+    if not proposed.get('new_invitation') or proposed['board']['kind']!='invitation' or proposed.get('parent_url')!=(current['url'] if current else ''):raise ValueError('invitation_binding')
+    if not proposed.get('native_invitation'):
+        if current is None or proposed['own_id']!=current['own_id'] or fields(proposed['url']).get('player2')!=current['own_id']:raise ValueError('identity')
     # Preserve the previous session before selecting the newly sent invitation.
     import game_session as gs
     import sync_selected_game as sync
     from import_mac_game import private_write
-    private_write(gs.STORE.parent/'Sessions'/(sync.scope(current)+'.json'),current)
+    if current is not None:private_write(gs.STORE.parent/'Sessions'/(sync.scope(current)+'.json'),current)
     proposed.pop('new_invitation',None);proposed.pop('parent_url',None)
     return proposed

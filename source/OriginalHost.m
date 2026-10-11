@@ -33,7 +33,19 @@ static NativeConversation *roomConversation(NSUserDefaults *prefs){
 }
 static void factoryTrack(id object,SEL selector,id event){}
 static NSInteger factoryPresentation(id object,SEL selector){return 0;}
-static id factorySend(id object,SEL selector,NSArray *items,id image,id caption,id subcaption,BOOL dismiss,BOOL start){NSMutableDictionary *d=[NSMutableDictionary dictionary];for(NSURLQueryItem *q in items)if(q.name && q.value)d[q.name]=q.value;generatedInvitation=d;return nil;}
+static id factorySend(id object,SEL selector,NSArray *items,id image,id caption,id subcaption,BOOL dismiss,BOOL start){
+ NSMutableDictionary *d=[NSMutableDictionary dictionary];for(NSURLQueryItem *q in items)if(q.name && q.value)d[q.name]=q.value;
+ // The intercepted send boundary normally adds this common message metadata.
+ if(start)d[@"start"]=@"";if(d[@"player2"])d[@"sender"]=d[@"player2"];
+ NSString *avatar=[[object valueForKey:@"prefs"]stringForKey:@"avatar"];if(avatar.length)d[@"avatar2"]=avatar;
+ d[@"num"]=@([d[@"num"]integerValue]+1).stringValue;
+ d[@"ios"]=UIDevice.currentDevice.systemVersion;
+ if(!d[@"tver"])d[@"tver"]=@"5";
+ if(!d[@"version"])d[@"version"]=@"5";
+ if(!d[@"build"])d[@"build"]=((id(*)(id,SEL,NSInteger))objc_msgSend)(object,NSSelectorFromString(@"genRandStringLength:"),23);
+ if([caption isKindOfClass:NSString.class])d[@"caption"]=caption;
+ generatedInvitation=d;return nil;
+}
 // Use the original invitation builder without creating a Messages conversation or sending.
 static NSDictionary *makeInvitation(id prefs,id menu,NSString *game){
  if(!gameRegistry()[game])return nil;
@@ -41,8 +53,9 @@ static NSDictionary *makeInvitation(id prefs,id menu,NSString *game){
  class_addMethod(factory,NSSelectorFromString(@"track:"),(IMP)factoryTrack,"v@:@");class_addMethod(factory,NSSelectorFromString(@"presentationStyle"),(IMP)factoryPresentation,"q@:");
  Method send=class_getInstanceMethod(NSClassFromString(@"MessagesViewController"),NSSelectorFromString(@"sendMessage:image:caption:subcaption:dismiss:start:"));class_addMethod(factory,method_getName(send),(IMP)factorySend,method_getTypeEncoding(send));objc_registerClassPair(factory);}
  generatedInvitation=nil;id builder=[factory new];[builder setValue:prefs forKey:@"prefs"];[builder setValue:menu forKey:@"gameVC"];
+ if(![prefs stringForKey:@"avatar"])((void(*)(id,SEL))objc_msgSend)(builder,NSSelectorFromString(@"updatePrefs"));
  [builder setValue:roomConversation(prefs) forKey:@"convo"];
- if(![prefs stringForKey:@"player_id_new"])[prefs setObject:@"macpigeon-local-player-2" forKey:@"player_id_new"];
+ if(![prefs stringForKey:@"player_id_new"] || [[prefs stringForKey:@"player_id_new"]isEqualToString:@"macpigeon-local-player-2"])[prefs setObject:NSUUID.UUID.UUIDString forKey:@"player_id_new"];
  ((void(*)(id,SEL,id))objc_msgSend)(builder,NSSelectorFromString(@"requestStart:"),game);
  NSDictionary *result=generatedInvitation;generatedInvitation=nil;return result;
 }
@@ -140,11 +153,11 @@ static NSDictionary *fields(id message){NSMutableDictionary *d=[NSMutableDiction
   UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"Online game" message:@"Crazy 8 uses a live multiplayer room. Switch to Messages play to invite your friends." preferredStyle:UIAlertControllerStyleAlert];[alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];[self.controller presentViewController:alert animated:YES completion:nil];return;
  }
  if(gameRegistry()[game]){
-  @try{if(![self.prefs stringForKey:@"player_id_new"])[self.prefs setObject:@"macpigeon-local-player-2" forKey:@"player_id_new"];
+  @try{
   id menu=[self.controller valueForKey:@"menuController"];NSDictionary *original=makeInvitation(self.prefs,menu,game);if(!original)[NSException raise:@"InvitationSetup" format:@"The original setup did not produce a game. Choose its options and try again."];
   NSString *selected=original[@"game"]?:game;if(!gameRegistry()[selected])[NSException raise:@"InvitationSetup" format:@"This game variant is not available."];
   NSMutableDictionary *options=[original mutableCopy];for(NSString *key in @[@"id",@"game",@"game_name",@"num",@"player",@"player1",@"player2",@"sender",@"avatar1",@"avatar2",@"start",@"caption",@"winner"]) [options removeObjectForKey:key];options[@"__native"]=@"1";
-  save(@{@"id":NSUUID.UUID.UUIDString,@"game":selected,@"options":options,@"avatar":[self.prefs stringForKey:@"avatar"]?:@""},@"native-menu-request.json");return;
+  save(@{@"id":NSUUID.UUID.UUIDString,@"game":selected,@"options":options,@"invitation":original,@"avatar":[self.prefs stringForKey:@"avatar"]?:@""},@"native-menu-request.json");return;
   }@catch(NSException *e){
    NSString *message=e.reason?:@"Invitation setup failed";save(@{@"error":message},@"native-renderer-status.json");
    UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"Cannot start game" message:message preferredStyle:UIAlertControllerStyleAlert];[alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];[self.controller presentViewController:alert animated:YES completion:nil];return;
@@ -340,17 +353,18 @@ static NSDictionary *fields(id message){NSMutableDictionary *d=[NSMutableDiction
  if(!valid || [identifier isEqualToString:self.invitationID] || self.presentedViewController || !self.menuOpen)return;
  self.invitationID=identifier;
  NSString *error=prompt[@"error"];BOOL failed=[error isKindOfClass:NSString.class];
+ NSString *notice=prompt[@"notice"];BOOL completed=[notice isKindOfClass:NSString.class];
  BOOL needsPhone=[prompt[@"requires_phone"]boolValue];
- NSString *message=failed?error:(needsPhone?[NSString stringWithFormat:@"Enter the iMessage phone number for %@, including +country code, to send this invitation.",prompt[@"target"]?:@"the open conversation"]:[NSString stringWithFormat:@"Send a new game to %@?",prompt[@"target"]?:@"the open conversation"]);
+ NSString *message=failed?error:(completed?notice:(needsPhone?[NSString stringWithFormat:@"Enter the iMessage phone number for %@, including +country code, to send this invitation.",prompt[@"target"]?:@"the open conversation"]:[NSString stringWithFormat:@"Send a new game to %@?",prompt[@"target"]?:@"the open conversation"]));
  UIAlertController *alert=[UIAlertController alertControllerWithTitle:failed?@"Cannot start game":prompt[@"title"] message:message preferredStyle:UIAlertControllerStyleAlert];
  if(!failed && needsPhone)[alert addTextFieldWithConfigurationHandler:^(UITextField *field){field.placeholder=@"+1 555 555 0123";field.keyboardType=UIKeyboardTypePhonePad;[field addTarget:self action:@selector(invitationPhoneChanged:) forControlEvents:UIControlEventEditingChanged];}];
  self.invitationAlert=alert;
  __weak NativeVC *weakSelf=self;
- if(!failed){self.invitationSendAction=[UIAlertAction actionWithTitle:@"Send invitation" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){
+ if(!failed && !completed){self.invitationSendAction=[UIAlertAction actionWithTitle:@"Send invitation" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){
   NSString *address=needsPhone?[alert.textFields.firstObject.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]:@"";
   save(@{@"id":identifier,@"connection_id":connection,@"action":@"send",@"address":address?:@""},@"native-invitation-response.json");weakSelf.invitationAlert=nil;
  }];self.invitationSendAction.enabled=!needsPhone;[alert addAction:self.invitationSendAction];}
- [alert addAction:[UIAlertAction actionWithTitle:failed?@"OK":@"Cancel" style:failed?UIAlertActionStyleDefault:UIAlertActionStyleCancel handler:^(UIAlertAction *action){save(@{@"id":identifier,@"connection_id":connection,@"action":@"cancel"},@"native-invitation-response.json");weakSelf.invitationAlert=nil;}]];
+ [alert addAction:[UIAlertAction actionWithTitle:(failed || completed)?@"OK":@"Cancel" style:(failed || completed)?UIAlertActionStyleDefault:UIAlertActionStyleCancel handler:^(UIAlertAction *action){save(@{@"id":identifier,@"connection_id":connection,@"action":@"cancel"},@"native-invitation-response.json");weakSelf.invitationAlert=nil;}]];
  [self presentViewController:alert animated:YES completion:nil];
 }
 - (void)pollLocalHandoff:(NSDictionary *)s{

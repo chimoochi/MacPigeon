@@ -349,9 +349,9 @@ async fn main() {
                     let saved=transport_saved.as_ref().ok_or(ids_access::fail("saved_identity_required"))?;
                     let invitation=command["action"]=="start_game";
                     let game=if invitation {
-                        let current=delivery::game(json!({"action":"load"}))?;
+                        let current=delivery::game(json!({"action":"invitation_context"}))?;
                         if saved["game_send"]["prepared_game"]["new_invitation"]==true && saved["game_send"]["confirmed_not_submitted"]!=true && saved["game_send"]["prepared_game"]["parent_url"]==current["url"] {return Err(ids_access::fail("invitation_already_reserved"));}
-                        delivery::game(json!({"action":"prepare_invitation","game":command["game"],"options":command["options"],"recipient":command["recipient"]}))?
+                        delivery::game(json!({"action":"prepare_invitation","game":command["game"],"options":command["options"],"native_invitation":command["native_invitation"],"recipient":command["recipient"]}))?
                     }else {
                         let expected=command["expected_num"].as_u64().ok_or(ids_access::fail("turn_number"))?;
                         delivery::game(json!({"action":"prepare_native","fields":command["fields"],"expected_num":expected}))?
@@ -369,11 +369,15 @@ async fn main() {
                     transport_saved.as_mut().unwrap()["game_send"]["recipient_transport_acknowledged"]=sent["recipient_transport_acknowledged"].clone();
                     transport_saved.as_mut().unwrap()["game_send"]["confirmed_not_submitted"]=sent["confirmed_not_submitted"].clone();
                     save_transport_ack(&account,transport_saved.as_ref().unwrap(),&mut input)?;
+                    if invitation && sent["confirmed_not_submitted"]==true {
+                        emit(json!({"type":"game_error","send_called":sent["send_called"],"failure_stage":sent["stage"],"message":"The invitation was not sent. Reconnect and try again."}));
+                        return Ok(());
+                    }
                     let committed=if sent["confirmed_not_submitted"]!=true {delivery::game(json!({"action":if invitation {"commit_invitation"}else{"commit"},"state":game}))?}else{delivery::game(json!({"action":"load"}))?};
                     emit(json!({"type":"game_sent","game":committed["board"],"can_play":committed["can_play"],"own_player":committed["own_player"],"recipient":committed["recipient"],"recipient_transport_acknowledged":sent["recipient_transport_acknowledged"],"send_called":sent["send_called"],"confirmed_not_submitted":sent["confirmed_not_submitted"],"message":if sent["recipient_transport_acknowledged"]==true {if invitation {"Invitation sent. Waiting for your friend."}else{"Turn sent. Waiting for your friend."}}else if sent["confirmed_not_submitted"]==true {"Couldn’t connect. Your game was not sent."}else{"Delivery is unconfirmed. This game will not be resent automatically."}}));
                     Ok::<(),ids_access::Failure>(())
                 }.await;
-                if let Err(e)=result {emit(json!({"type":"game_error","send_called":worker_called,"failure_stage":e.stage,"message":if worker_called {"Delivery is uncertain. This move is reserved to prevent duplicate sends."}else{"The move could not start. Refresh the saved game before trying again."}}));}
+                if let Err(e)=result {emit(json!({"type":"game_error","send_called":worker_called,"failure_stage":e.stage,"message":if worker_called {"Delivery is uncertain. This move is reserved to prevent duplicate sends."}else if command["action"]=="start_game" {"The invitation could not start. Check your connection, then try again."}else{"The move could not start. Refresh the saved game before trying again."}}));}
             }
             "receive_game" => {
                 let result=async {

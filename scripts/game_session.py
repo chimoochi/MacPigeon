@@ -26,18 +26,25 @@ def write(state):
     os.replace(temporary,STORE); STORE.chmod(0o600)
 
 def validate(state):
-    own,latest=fields(state['own_url']),fields(state['url'])
+    latest=fields(state['url'])
     invitation='start' in latest
     joining=invitation and state.get('joining') is True
-    player=1 if joining else int(own['player'])
-    own_id=own['sender']
-    if player not in (1,2) or not own.get('id'):raise ValueError('identity')
+    own=fields(state['own_url']) if state.get('own_url') else None
+    if joining:
+        player=1
+        own_id=state.get('local_player_id') or (own['sender'] if own else None)
+        if not isinstance(own_id,str) or not 1<=len(own_id)<=256 or not own_id.isascii() or not own_id.isprintable():raise ValueError('identity')
+        if latest['num']!='1' or latest.get('player')!='2':raise ValueError('invitation_identity')
+        if own_id==latest.get('player2') or latest.get('player1'):raise ValueError('identity')
+    else:
+        if own is None:raise ValueError('identity')
+        player=int(own['player']);own_id=own['sender']
+        if player not in (1,2) or not own.get('id'):raise ValueError('identity')
     if not joining:
         if own.get('id')!=latest.get('id') or own.get('game')!=latest.get('game') or own.get('sender')!=own.get('player'+str(player)):raise ValueError('identity')
         for key in ('player1','player2'):
             if own.get(key) and own.get(key)!=latest.get(key):raise ValueError('identity')
         if latest.get('player'+str(player))!=own_id:raise ValueError('identity')
-    elif own_id==latest.get('player2'):raise ValueError('identity')
     actor=int(latest['player'])
     if actor not in (1,2) or latest.get('sender')!=latest.get('player'+str(actor)): raise ValueError('actor')
     recipient=state['recipient']
@@ -46,6 +53,7 @@ def validate(state):
     state['board']=board(state['url']); state['own_player']=player;state['own_id']=own_id
     history=list(state.get('seen_url_hashes',[]))
     for key in ('url','own_url'):
+        if not state.get(key):continue
         digest=hashlib.sha256(state[key].encode()).hexdigest()
         if digest not in history: history.append(digest)
     state['seen_url_hashes']=history[-64:]
@@ -60,6 +68,12 @@ def load():
     sent=read(old/'mac-reply-candidate-private.json');received=read(old/'live-selected-game-private.json');selector=read(old/'mac-test-selector.json')
     state=validate(dict(version=1,recipient='tel:'+selector['sender'],session_hex=sent['session_identifier_hex'],own_url=sent['url'],url=received['url'],wire=base64.b64encode((old/'rustpush-candidate-balloon.bin').read_bytes()).decode(),pending=False))
     write(state); return state
+
+def invitation_context():
+    # A genuinely empty install can start a game. A corrupt existing store must
+    # still fail validation rather than being silently replaced.
+    if STORE.exists() or (SUPPORT/'Delivery/mac-test-selector.json').exists():return load()
+    return None
 
 def accept(state,url):
     return advance(state,url,opponent_only=True)
@@ -99,16 +113,24 @@ def prepare_native(state,output,expected):
 
 def main():
     request=json.loads(sys.stdin.buffer.readline(262145));action=request['action']
-    state=load()
-    if action=='prepare_native':state=prepare_native(state,request['fields'],request['expected_num'])
+    if action=='invitation_context':
+        state=invitation_context() or {'url':''}
     elif action=='prepare_invitation':
-        from new_games import prepare
-        state=prepare(state,request['recipient'],request['game'],request.get('options',{}))
+        from new_games import prepare,prepare_original
+        current=invitation_context()
+        if isinstance(request.get('native_invitation'),dict):
+            state=prepare_original(current,request['recipient'],request['game'],request['native_invitation'])
+        else:
+            if current is None:raise ValueError('original_invitation_required')
+            state=prepare(current,request['recipient'],request['game'],request.get('options',{}))
     elif action=='commit_invitation':
         from new_games import commit
-        state=commit(state,request['state']);write(state)
+        state=commit(invitation_context(),request['state']);write(state)
         from sync_selected_game import authorize
         authorize()
+    else:
+        state=load()
+    if action=='prepare_native':state=prepare_native(state,request['fields'],request['expected_num'])
     elif action=='commit':
         proposed=request['state']; current=load()
         if int(proposed['board']['num'])!=int(current['board']['num'])+1: raise ValueError('stale_commit')
@@ -117,7 +139,7 @@ def main():
         if state['url']!=proposed['url']: raise ValueError('commit_binding')
         write(state)
     elif action=='receive': state=accept(state,request['url']);write(state)
-    elif action!='load': raise ValueError('action')
+    elif action not in ('load','prepare_invitation','commit_invitation','invitation_context'): raise ValueError('action')
     print(json.dumps(dict(ok=True,state=state),separators=(',',':')))
 
 if __name__=='__main__':
