@@ -1,7 +1,7 @@
 # MacPigeon
 
 MacOS launcher for GamePigeon. Includes local play adapter.
-Some games have not been tested, most games adapters were made from tracing with ida wihtout runtime tests, 1:1 runtime isnt 100% guaranteed to work for some. Feedback is appreciated. Crazy 8 def wont wont work yet.
+Some games have not been tested, most games adapters were made from tracing with ida without runtime tests, 1:1 runtime isnt 100% guaranteed to work for some. Feedback is appreciated. Crazy 8 def won't work for sure yet.
 
 ## FAQ
 
