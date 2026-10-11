@@ -16,10 +16,14 @@ import socket
 import ssl
 import struct
 import subprocess
+import sys
 import tempfile
 import urllib.request
 import uuid
 import time
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from bundled_tls import create_context
 
 ENDPOINT = 'https://albert.apple.com/deviceservices/deviceActivation?device=MacOS'
 
@@ -203,7 +207,8 @@ def probe(live, connect=False, private_worker=False):
             request = urllib.request.Request(ENDPOINT, data=encoded, headers={
                 'User-Agent':'ApplePushService/4.0 com.apple.iCloudHelper/282',
                 'Content-Type':'application/x-www-form-urlencoded'})
-            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirects())
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirects(),
+                urllib.request.HTTPSHandler(context=create_context()))
             report['activation_requests'] = 1
             try:
                 response = opener.open(request,timeout=25)

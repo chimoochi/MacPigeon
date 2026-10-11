@@ -7,7 +7,6 @@ import os
 from pathlib import Path
 import resource
 import signal
-import ssl
 import sys
 import subprocess
 from datetime import datetime, timezone
@@ -17,6 +16,7 @@ logging.disable(logging.CRITICAL)
 resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 os.umask(0o077)
 # The development app packages dependencies beside this worker; no global install.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 vendor = Path(__file__).resolve().parent / 'python-vendor'
 if vendor.is_dir():
     sys.path.insert(0, str(vendor))
@@ -25,6 +25,7 @@ from anisette import Anisette
 from anisette._session import ProvisioningSession
 from anisette._device import AnisetteDeviceConfig
 import urllib3
+from bundled_tls import create_context
 
 counts = {'requests': 0}
 def restricted_request(self, method, url, extra_headers, data=None, cache_key=None):
@@ -84,7 +85,7 @@ def main():
         ani._ani_provider.device._server_friendly_description = description
         ani._ani_provider.device.write()
         # The VM stays local. Its provisioning traffic goes directly to Apple.
-        ani._ani_provider.provisioning_session._http = urllib3.PoolManager(ssl_context=ssl.create_default_context())
+        ani._ani_provider.provisioning_session._http = urllib3.PoolManager(ssl_context=create_context())
         headers = ani.get_data()
         temporary = state.with_suffix('.new')
         with temporary.open('wb') as out:

@@ -34,6 +34,7 @@ xcrun swiftc -O -target arm64-apple-macos14.0 -parse-as-library \
   -r "$root/requirements-build.txt"
 "$python" "$root/scripts/bundle_python.py" "$root/build/MacPigeon.app/Contents/Resources"
 "$python" "$root/scripts/relocate_helpers.py" "$root/build/MacPigeon.app"
+"$python" "$root/scripts/verify_auth_runtime.py" "$root/build/MacPigeon.app"
 codesign --force --sign - "$root/build/MacPigeon.app/Contents/Resources/macpigeon-balloon"
 codesign --force --sign - "$root/build/MacPigeon.app"
 codesign --verify --deep --strict "$root/build/MacPigeon.app"
