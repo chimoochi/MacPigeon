@@ -438,6 +438,13 @@ struct NativeConnectionView:View {
                 Divider()
                 Button("Open Data Folder"){NSWorkspace.shared.open(DataStorage.root)}
                 Button("Save diagnostics…"){bridge.exportDiagnostics()}
+                Divider()
+                VStack(alignment:.leading,spacing:6){
+                    Text("Ported to Mac by Chimoochi").font(.caption.bold())
+                    Link("GitHub",destination:URL(string:"https://github.com/chimoochi/MacPigeon")!)
+                    Link("Apache 2.0 with Commons Clause License Condition v1.0",destination:URL(string:"https://github.com/chimoochi/MacPigeon/blob/main/LICENSE")!)
+                        .fixedSize(horizontal:false,vertical:true)
+                }.font(.caption)
             }.frame(maxWidth:.infinity,alignment:.leading)}
         }.padding(28).frame(width:420,height:500)
     }

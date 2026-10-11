@@ -32,6 +32,8 @@ for path in (root / 'resources').iterdir():
     if path.is_file():
         shutil.copy2(path, resources / path.name)
 shutil.copy2(root / 'source/vendor/apple-private-apis/LICENSE', resources / 'ApplePrivateAPIs-LICENSE.txt')
+shutil.copy2(root / 'LICENSE', resources / 'LICENSE.txt')
+shutil.copy2(root / 'THIRD_PARTY_NOTICES.md', resources / 'THIRD_PARTY_NOTICES.md')
 shutil.copy2(Path(sys.argv[1]).resolve(), resources / 'apple-music-arm64-libs.zip')
 # Public legacy bootstrap material is obtained from the pinned backend source.
 # It remains confined to ignored build outputs and is never committed here.
