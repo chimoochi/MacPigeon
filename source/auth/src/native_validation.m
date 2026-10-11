@@ -119,3 +119,6 @@ char *mp_device_validation(const unsigned char *certBytes, size_t certLength, co
         return encoded;
     }
 }
+
+// Release the JSON buffer returned to the Rust account helper.
+void mp_auth_free(char *value) { if (value) { memset(value, 0, strlen(value)); free(value); } }

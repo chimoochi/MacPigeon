@@ -3,9 +3,9 @@ set -eu
 root=${0:A:h:h}
 python=${MACPIGEON_PYTHON:-python3.13}
 libs=${MACPIGEON_ANISSETTE_LIBS:-$root/.build-inputs/apple-music-arm64-libs.zip}
-if [[ ! -f "$libs" ]]; then
+if [[ -n "${MACPIGEON_ANISSETTE_LIBS:-}" && ! -f "$libs" ]]; then
   print -u2 "Missing local Anisette library archive: $libs"
-  print -u2 "Supply your local ARM64 library archive or set MACPIGEON_ANISSETTE_LIBS. See README.md."
+  print -u2 "MACPIGEON_ANISSETTE_LIBS must point to an existing archive. Unset it to download from Apple."
   exit 1
 fi
 for tool in "$python" cargo xcrun protoc pkg-config; do
@@ -13,6 +13,7 @@ for tool in "$python" cargo xcrun protoc pkg-config; do
 done
 cd "$root"
 export MACPIGEON_PYTHON="$python"
+"$python" "$root/scripts/fetch_anisette.py" "$libs"
 "$python" "$root/scripts/fetch_transport.py"
 "$python" "$root/scripts/prepare_transport.py"
 cp "$root/source/transport/Cargo.lock" "$root/build/deps/rustpush/Cargo.lock"

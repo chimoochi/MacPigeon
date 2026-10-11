@@ -10,12 +10,12 @@ Install full Xcode, select its command-line tools, and install Rust and the nati
 brew install python@3.13 protobuf pkg-config openssl@3
 ```
 
-For a source build, provide an archive at `.build-inputs/apple-music-arm64-libs.zip`, or set `MACPIGEON_ANISSETTE_LIBS` to an existing archive's location. The ZIP must contain these ARM64 libraries from the Apple Music Android app:
+The source build automatically downloads the Apple Music Android APK directly from Apple, verifies the pinned SHA-256 of the two required ARM64 libraries, and caches them at `.build-inputs/apple-music-arm64-libs.zip`. Later builds reuse the verified cache. If Apple changes the libraries, the build stops with a hash mismatch until the supported hashes are reviewed and updated. To use an existing archive, set `MACPIGEON_ANISSETTE_LIBS` to its location. The ZIP must contain:
 
 - `lib/arm64-v8a/libCoreADI.so`
 - `lib/arm64-v8a/libstoreservicescore.so`
 
-The local Anisette provider uses these libraries to generate Apple authentication headers for account sign-in. This archive is separate from the GamePigeon IPA and contains no account credentials. The Apple libraries are not included in this repository, and the build does not download them. The build bundles them into the resulting app, so users of a prebuilt app do not need to provide this archive.
+The local Anisette provider uses these libraries in an emulator to generate Apple authentication headers for account sign-in. It does not call macOS's native Anisette APIs or a remote Anisette service. This archive is separate from the GamePigeon IPA and contains no account credentials. Apple's binaries are kept in ignored build inputs, rather than the source repository. The build bundles them into the resulting app, so users of a prebuilt app do not need to download or provide this archive.
 
 ```sh
 export MACPIGEON_PYTHON="$(brew --prefix python@3.13)/bin/python3.13"

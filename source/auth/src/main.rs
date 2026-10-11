@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ffi::{CStr, c_char}, io::{self, BufRead, BufReader, Write}, sync::Arc, process::{Child, ChildStdin, ChildStdout, Command, Stdio}, path::PathBuf};
+use std::{collections::HashMap, io::{self, BufRead, BufReader, Write}, sync::Arc, process::{Child, ChildStdin, ChildStdout, Command, Stdio}, path::PathBuf};
 use icloud_auth::{AppleAccount, LoginState, LoginClientInfo, PersistAccountData, VerifyBody};
 use omnisette::{AnisetteProvider, AnisetteError, AnisetteClient};
 use serde_json::{json, Value};
@@ -41,7 +41,6 @@ fn same_game(a:&Value,b:&Value)->bool {
 
 
 
-extern "C" { fn mp_auth_headers() -> *mut c_char; fn mp_auth_free(value: *mut c_char); fn mp_auth_error() -> i64; }
 struct LocalWorker { child: Child, input: ChildStdin, output: BufReader<ChildStdout> }
 impl LocalWorker {
     fn start() -> Result<Self, AnisetteError> {
@@ -73,22 +72,17 @@ impl LocalWorker {
     }
 }
 impl Drop for LocalWorker { fn drop(&mut self) {let _=self.child.kill();let _=self.child.wait();} }
-struct NativeProvider { local: Option<LocalWorker> }
-impl AnisetteProvider for NativeProvider {
+struct LocalProvider { worker: Option<LocalWorker> }
+impl AnisetteProvider for LocalProvider {
     async fn get_anisette_headers(&mut self) -> Result<HashMap<String, String>, AnisetteError> {
-        if let Some(worker)=&mut self.local {return worker.headers(true);}
-        let ptr = unsafe { mp_auth_headers() };
-        if ptr.is_null() {
-            let mut worker=LocalWorker::start()?;
-            let headers=worker.headers(false)?;
-            self.local=Some(worker);
-            return Ok(headers);
-        }
-        let parsed = unsafe { serde_json::from_slice(CStr::from_ptr(ptr).to_bytes()) };
-        unsafe { mp_auth_free(ptr); }
-        parsed.map_err(|_| AnisetteError::InvalidLibraryFormat)
+        if let Some(worker) = &mut self.worker { return worker.headers(true); }
+        let mut worker = LocalWorker::start()?;
+        let headers = worker.headers(false)?;
+        self.worker = Some(worker);
+        Ok(headers)
     }
 }
+
 fn emit(value: Value) {
     let mut out = io::stdout().lock();
     // This private pipe belongs to the GUI. Session events must never be logged.
@@ -113,12 +107,12 @@ fn safe_error(error: icloud_auth::Error) {
         icloud_auth::Error::AuthSrp | icloud_auth::Error::AuthSrpWithMessage(_, _) => "Apple did not accept the sign-in. Check your account and password.",
         icloud_auth::Error::FailedGetting2FAConfig | icloud_auth::Error::HardwareKeyError => "This account’s security flow is not supported by this experimental client. Keep your account protections enabled.",
         icloud_auth::Error::ExtraStep(_) => "Apple requires an account step outside this app. Open your Apple Account settings.",
-        icloud_auth::Error::ErrorGettingAnisette(_) => "Native Mac authentication data is unavailable.",
+        icloud_auth::Error::ErrorGettingAnisette(_) => "Local Apple authentication data is unavailable.",
         _ => "The experimental Apple sign-in failed. No game turn was sent.",
     };
     emit(json!({"type":"error", "message":message}));
 }
-type Account = AppleAccount<NativeProvider>;
+type Account = AppleAccount<LocalProvider>;
 async fn show_state(account: &mut Account, mut state: LoginState, sms: &mut Option<VerifyBody>, transport: Option<&Value>) -> Result<(), icloud_auth::Error> {
     if matches!(state, LoginState::NeedsDevice2FA) { state = account.send_2fa_to_devices().await?; }
     match state {
@@ -155,22 +149,21 @@ async fn show_state(account: &mut Account, mut state: LoginState, sms: &mut Opti
 async fn main() {
     // Never enable a logger or display panic values from upstream parsing.
     std::panic::set_hook(Box::new(|_| {}));
-    let provider = Arc::new(tokio::sync::Mutex::new(AnisetteClient::new(NativeProvider {local:None})));
+    let provider = Arc::new(tokio::sync::Mutex::new(AnisetteClient::new(LocalProvider {worker:None})));
     let preflight = std::env::args().any(|a|a == "--preflight");
     let headers = match provider.lock().await.get_headers().await { Ok(h) => h.clone(), Err(_) => {
         if preflight {
-            emit(json!({"native_authentication_headers_available":false,"native_error_code":unsafe { mp_auth_error() },"account_login_called":false,"ids_registration_called":false,"send_called":false,"header_values_printed":false}));
+            emit(json!({"authentication_headers_available":false,"local_emulator_used":true,"account_login_called":false,"ids_registration_called":false,"send_called":false,"header_values_printed":false}));
             std::process::exit(2);
         }
-        emit(json!({"type":"error","message":"Native Mac authentication is unavailable on this macOS version. Sign-in is blocked before any credentials are requested."}));
+        emit(json!({"type":"error","message":"Local Apple authentication is unavailable. Check that the app includes its Anisette libraries and Python runtime. Sign-in is blocked before any credentials are requested."}));
         // Keep the private GUI pipe alive so its specific blocker stays visible.
         let mut discarded = String::new();
         let _ = io::stdin().lock().read_line(&mut discarded); discarded.zeroize();
         return;
     } };
     if preflight {
-        let is_local = provider.lock().await.provider.local.is_some();
-        emit(json!({"authentication_headers_available":true,"local_emulator_used":is_local,"native_framework_used":!is_local,"required_header_count":headers.len(),"account_login_called":false,"ids_registration_called":false,"send_called":false,"header_values_printed":false,"remote_anisette_service_used":false}));
+        emit(json!({"authentication_headers_available":true,"local_emulator_used":true,"native_framework_used":false,"required_header_count":headers.len(),"account_login_called":false,"ids_registration_called":false,"send_called":false,"header_values_printed":false,"remote_anisette_service_used":false}));
         return;
     }
     let description = headers.get("X-Mme-Client-Info").cloned().unwrap_or_default();

@@ -7,6 +7,6 @@
 
 The repository includes the RustPush live-layout serialization template and the authentication library's public Apple root certificate because source modules reference them. These are not saved account state.
 
-The Apple Music ARM64 authentication archive is an external local build input. Legacy push bootstrap certificates and signing material originate in the fetched backend and are copied only into ignored build outputs. The source repository contains no account credentials or private device keys. Review the rights and terms for these materials before distributing a prebuilt app.
+The Apple Music ARM64 authentication archive is downloaded directly from Apple during the source build (or supplied through `MACPIGEON_ANISSETTE_LIBS`), verified against pinned library hashes, and cached only in ignored build inputs. Its libraries run in the local Anisette emulator; native macOS Anisette retrieval is not used. Legacy push bootstrap certificates and signing material originate in the fetched backend and are copied only into ignored build outputs. The source repository contains no account credentials or private device keys. Review the rights and terms for these materials before distributing a prebuilt app.
 
 GamePigeon binaries, icons, artwork, and IPA archives are not included. Names and identifiers appear in integration code to identify the supported app and games; this repository does not claim ownership of them or affiliation with their authors.
