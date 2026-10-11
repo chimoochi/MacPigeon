@@ -1,6 +1,17 @@
 # MacPigeon
 
-Experimental macOS launcher for GamePigeon games, with local play and a Messages integration. Requires an Apple Silicon Mac running macOS 26 or later.
+MacOS launcher for GamePigeon. Includes local play adapter.
+Some games have not been tested, most games adapters were made from tracing with ida wihtout runtime tests, 1:1 runtime isnt 100% guaranteed to work for some. Feedback is appreciated. Crazy 8 def wont wont work yet.
+
+FAQ
+Q: How do I get an decrypted IPA?
+A: from prolly armconverter, or [my telegram](https://t.me/+t-YuZwZqudw1MTc5).
+
+Q: Is this safe?
+A: ur data goes to only apple for imessage login so the app could send the game pigeon text package to ur friends. The accessibility and full disk access are for fetching ur messages to get the app. GamePigeon does send their own data to their servers, but it is not your imessage login.
+
+Q: Does it support local play?
+A: Yuh, with pass and play, one window. Support for a few games may vary lowk.
 
 ## Build
 
@@ -36,7 +47,7 @@ Optional build settings:
 
 ## First run
 
-Open the app and use Settings to import a **decrypted GamePigeon IPA with internal version 2.0.13, build 19**, containing the supported extension executable. These version numbers come from the IPA's internal metadata; a filename or download label is not sufficient to identify it. The executable must also match the SHA-256 recorded in `resources/supported-game-binary.json`, so a different executable with the same version number is rejected.
+Open the app and use Settings to import a **decrypted GamePigeon IPA with internal version 2.0.13, build 19. (2.2.6 app version)**, containing the supported extension executable. These version numbers come from the IPA's internal metadata; a filename or download label is not sufficient to identify it. The executable must also match the SHA-256 recorded in `resources/supported-game-binary.json`, so a different executable with the same version number is rejected.
 
 No GamePigeon executable, artwork, IPA, or fallback renderer payload is embedded in this source build. Encrypted IPAs are rejected. The importer adapts a local copy and leaves the supplied IPA unchanged.
 
@@ -44,7 +55,7 @@ Messages features require the relevant macOS permissions, account setup, and a m
 
 App data is stored under `~/Library/Application Support/MacPigeon`. On first launch, files from the historical `MacPigeon Lab` directory are copied into the new folder; existing destination files take precedence, and the old folder is retained as a recovery copy. Its `SelectedTest` subfolder becomes `Delivery`. Migration finishes before account or game helpers start, and an unsuccessful migration can be retried. Settings → Open Data Folder opens the folder in Finder. Account sessions and delivery keys remain in Keychain, and renderer data remains in its macOS sandbox container.
 
-This is an experimental project that uses Apple's private interfaces. Game support and online behavior vary by adapter; the source catalog is in `scripts/game_adapters.py` and `scripts/game_modes`. A separate Mac or clean macOS VM should be used to check installation, permissions, import, and account behavior before distributing a build.
+This is an experimental project that uses Apple's private interfaces. Game support and online behavior vary by adapter; the source catalog is in `scripts/game_adapters.py` and `scripts/game_modes`.
 
 ## Third-party code
 
