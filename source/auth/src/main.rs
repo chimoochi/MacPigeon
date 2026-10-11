@@ -343,7 +343,7 @@ async fn main() {
                     Err(_)=>emit(json!({"type":"game_unavailable","message":"No saved game is available yet. Older Messages bubbles still need a scoped import."})),
                 }
             }
-            "send_game_move" | "send_native_turn" | "start_game" => {
+            "send_native_turn" | "start_game" => {
                 let mut worker_called=false;
                 let result=async {
                     let saved=transport_saved.as_ref().ok_or(ids_access::fail("saved_identity_required"))?;
@@ -354,12 +354,7 @@ async fn main() {
                         delivery::game(json!({"action":"prepare_invitation","game":command["game"],"options":command["options"],"recipient":command["recipient"]}))?
                     }else {
                         let expected=command["expected_num"].as_u64().ok_or(ids_access::fail("turn_number"))?;
-                        if command["action"]=="send_native_turn" {
-                            delivery::game(json!({"action":"prepare_native","fields":command["fields"],"expected_num":expected}))?
-                        }else {
-                            let column=command["column"].as_u64().filter(|c|*c<7).ok_or(ids_access::fail("column"))?;
-                            delivery::game(json!({"action":"prepare","column":column,"expected_num":expected}))?
-                        }
+                        delivery::game(json!({"action":"prepare_native","fields":command["fields"],"expected_num":expected}))?
                     };
                     let marker=format!("{:x}",Sha256::digest(game["url"].as_str().ok_or(ids_access::fail("game_url"))?.as_bytes()));
                     if same_game(&saved["game_send"]["prepared_game"],&game) && saved["game_send"]["prepared_game"]["board"]["num"]==game["board"]["num"] && saved["game_send"]["confirmed_not_submitted"]!=true {return Err(ids_access::fail("turn_already_reserved"));}

@@ -36,7 +36,7 @@ final class AccountConnection: ObservableObject {
     @Published var ownPlayer = 2
     @Published var gameRevision = 0
     @Published var gameStatus = "Opening your saved game…"
-    var gameFinished:Bool {gameSample?.finished ?? gameSample.flatMap{try? Board(sample:$0)}?.finished ?? false}
+    var gameFinished:Bool {gameSample?.finished ?? false}
     private var autoConnected = false
     private var receiveAgain: DispatchWorkItem?
     private var receiveFailures = 0
@@ -295,15 +295,6 @@ final class AccountConnection: ObservableObject {
     func checkSenderHandles() { busy = true; status = "Checking your iMessage phone-number sender with Apple…"; send(["action": "check_sender_handles"]) }
     func connectDelivery() {if process==nil{start();return};busy = true; status = "Preparing your saved delivery identity…"; send(["action": "connect_delivery"]) }
     func loadGame() { receiveAgain?.cancel(); busy = true; send(["action": "load_game"]) }
-    @discardableResult func sendMove(column: Int, number: Int) -> Bool {
-        guard !busy, phoneAuthorized, canPlayGame else { return false }
-        // Check again at the account boundary, not only in the button's enabled state.
-        guard let recipient = try? MessagesContext.currentHandle(), recipient == gameRecipient else {
-            gameStatus = "Open the matching Messages conversation before sending."; return false
-        }
-        receiveAgain?.cancel(); busy = true; canPlayGame = false; gameStatus = "Sending your turn…"
-        send(["action": "send_game_move", "column": column, "expected_num": number]); return true
-    }
     @discardableResult func sendNativeTurn(fields:[String:String],number:Int)->Bool {
         guard !busy,phoneAuthorized,canPlayGame,let recipient=try? MessagesContext.currentHandle(),recipient==gameRecipient else{return false}
         receiveAgain?.cancel();busy=true;canPlayGame=false;gameStatus="Sending your turn…"

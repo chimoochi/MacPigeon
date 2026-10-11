@@ -3,16 +3,13 @@ import base64,json,re,secrets,string,subprocess,uuid
 from pathlib import Path
 from urllib.parse import quote
 from connect_codec import transform
-import game_adapters as adapters
+from game_catalog import GAMES
+from game_messages import options_for
 
 def encoded_url(fields):
     encode=lambda pairs:'&'.join(quote(k,safe='')+'='+quote(v,safe='') for k,v in pairs)
     inner='?'+encode([(k,v) for k,v in fields.items() if k!='ver'])
     return 'data:?'+encode([('ver','52'),('data',transform(inner))])
-
-def options_for(game,options):
-    if not isinstance(options,dict):raise ValueError('game')
-    return adapters.invitation_options(game,options)
 
 def serialize(url,session,title):
     resources=Path(__file__).resolve().parent;helper=resources/'macpigeon-balloon'
@@ -31,10 +28,10 @@ def prepare(current,recipient,game,options,serializer=serialize):
     avatar=profile.get('avatar'+profile['player'])
     if not avatar:raise ValueError('avatar_reference_required')
     alphabet=string.ascii_letters+string.digits
-    fields_out=dict(sender=own,version='5',tver='5',ios=profile.get('ios','16.3.1'),start='',caption="Let's play "+adapters.GAMES[game][0]+'!',id=''.join(secrets.choice(alphabet) for _ in range(16)),player='2',player2=own,avatar2=avatar,game=game,game_name=adapters.GAMES[game][0],num='1',build=''.join(secrets.choice(alphabet) for _ in range(23)))
+    fields_out=dict(sender=own,version='5',tver='5',ios=profile.get('ios','16.3.1'),start='',caption="Let's play "+GAMES[game][0]+'!',id=''.join(secrets.choice(alphabet) for _ in range(16)),player='2',player2=own,avatar2=avatar,game=game,game_name=GAMES[game][0],num='1',build=''.join(secrets.choice(alphabet) for _ in range(23)))
     fields_out.update(config);url=encoded_url(fields_out);session=str(uuid.uuid4())
     state=validate(dict(version=2,recipient=recipient,session_hex=session,own_url=url,url=url,pending=True,parent_url=current['url'],new_invitation=True))
-    state['wire']=serializer(url,session,adapters.GAMES[game][0]);return state
+    state['wire']=serializer(url,session,GAMES[game][0]);return state
 
 def commit(current,proposed):
     from game_session import validate,fields

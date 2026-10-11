@@ -1,0 +1,30 @@
+"""Original game screen names only; no game rules or replay parsing."""
+
+GAMES = {'connect': ('Four in a Row', 'ConnectScene'),
+ 'chess': ('Chess', 'ChessScene'),
+ 'pool': ('8 Ball', 'PoolScene'),
+ 'golf': ('Mini Golf', 'GolfScene'),
+ 'sea': ('Sea Battle', 'SeaScene'),
+ 'crazy': ('Crazy 8', 'CrazyScene'),
+ 'renju': ('Gomoku', 'RenjuScene'),
+ 'reversi': ('Reversi', 'ReversiScene'),
+ 'fill': ('Filler', 'FillScene'),
+ 'dots': ('Dots & Boxes', 'DotsScene'),
+ 'mancala': ('Mancala', 'MancalaScene'),
+ 'checkers': ('Checkers', 'CheckersScene'),
+ 'darts': ('Darts', 'DartsScene'),
+ 'archery': ('Archery', 'ArcheryScene'),
+ 'beer': ('Cup Pong', 'BeerScene'),
+ 'basketball': ('Basketball', 'BasketballScene'),
+ 'shuffle': ('Shuffleboard', 'ShuffleScene'),
+ 'knock': ('Knockout', 'KnockScene'),
+ 'tanks': ('Tanks', 'TanksScene'),
+ 'paint': ('Paintball', 'PaintScene'),
+ 'anagrams': ('Anagrams', 'AnagramsScene'),
+ 'hunt': ('Word Hunt', 'HuntScene'),
+ 'wordbites': ('Word Bites', 'HuntScene'),
+ 'questions': ('20 Questions', 'QuestionsScene'),
+ 'pool2': ('9 Ball', 'PoolScene2'),
+ 'pool3': ('8 Ball+', 'PoolScene3')}
+
+REALTIME_GAMES = frozenset({"crazy"})

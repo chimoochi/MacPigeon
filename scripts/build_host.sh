@@ -23,7 +23,7 @@ info = {'CFBundleIdentifier': 'local.macpigeon.native.renderer',
                 'UISceneDelegateClassName': 'NativeSceneDelegate'}]}}}
 (app / 'Contents/Info.plist').write_bytes(plistlib.dumps(info))
 sys.path.insert(0, str(root / 'scripts'))
-from game_adapters import GAMES
+from game_catalog import GAMES
 (resources / 'macpigeon-game-registry.json').write_text(json.dumps({
     game: dict(title=title, scene=scene) for game, (title, scene) in GAMES.items()}))
 PY

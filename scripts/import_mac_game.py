@@ -87,7 +87,7 @@ def wire(payload,url,session):
     resources=Path(__file__).resolve().parent
     helper=resources/'macpigeon-balloon'
     if not helper.exists():helper=resources.parent/'runtime/balloon/target/release/macpigeon-balloon-probe'
-    from game_adapters import GAMES
+    from game_catalog import GAMES
     result=subprocess.run([str(helper)],input=json.dumps({'payload':list(payload),'url':url,'session':str(session),'caption':GAMES[gs.fields(url)['game']][0]}).encode(),stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=10)
     if result.returncode or len(result.stdout)>1048576:raise ValueError('serialization_failed')
     raw=bytes(json.loads(result.stdout)['wire'])
