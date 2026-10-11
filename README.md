@@ -10,7 +10,12 @@ Install full Xcode, select its command-line tools, and install Rust and the nati
 brew install python@3.13 protobuf pkg-config openssl@3
 ```
 
-Provide your local ARM64 Anisette library archive at `.build-inputs/apple-music-arm64-libs.zip`, or set `MACPIGEON_ANISSETTE_LIBS` to its location. This archive contains Apple Music authentication libraries used by the local Anisette provider. It is not included in the repository, and the build does not download it for you.
+For a source build, provide an archive at `.build-inputs/apple-music-arm64-libs.zip`, or set `MACPIGEON_ANISSETTE_LIBS` to an existing archive's location. The ZIP must contain these ARM64 libraries from the Apple Music Android app:
+
+- `lib/arm64-v8a/libCoreADI.so`
+- `lib/arm64-v8a/libstoreservicescore.so`
+
+The local Anisette provider uses these libraries to generate Apple authentication headers for account sign-in. This archive is separate from the GamePigeon IPA and contains no account credentials. The Apple libraries are not included in this repository, and the build does not download them. The build bundles them into the resulting app, so users of a prebuilt app do not need to provide this archive.
 
 ```sh
 export MACPIGEON_PYTHON="$(brew --prefix python@3.13)/bin/python3.13"
@@ -31,7 +36,9 @@ Optional build settings:
 
 ## First run
 
-Open the app and use Settings to import your compatible decrypted GamePigeon IPA. No GamePigeon executable, artwork, IPA, or fallback renderer payload is embedded in this source build. The importer checks the extension executable against `resources/supported-game-binary.json`; encrypted IPAs and other executable hashes are rejected. It adapts a local copy and leaves the supplied IPA unchanged.
+Open the app and use Settings to import a **decrypted GamePigeon IPA with internal version 2.0.13, build 19**, containing the supported extension executable. These version numbers come from the IPA's internal metadata; a filename or download label is not sufficient to identify it. The executable must also match the SHA-256 recorded in `resources/supported-game-binary.json`, so a different executable with the same version number is rejected.
+
+No GamePigeon executable, artwork, IPA, or fallback renderer payload is embedded in this source build. Encrypted IPAs are rejected. The importer adapts a local copy and leaves the supplied IPA unchanged.
 
 Messages features require the relevant macOS permissions, account setup, and a matching conversation. Accessibility and Full Disk Access are configured in System Settings; Contacts lookup is optional. Account material is stored through the app's Keychain flow, and game state is stored locally in Application Support. Some existing storage paths retain the historical `MacPigeon Lab` name for compatibility.
 
