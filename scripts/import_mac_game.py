@@ -6,6 +6,7 @@ from contextlib import closing
 from pathlib import Path
 import game_session as gs
 import sync_selected_game as sync
+from messages_scope import recipient_predicate
 
 MAX_BYTES=262144
 EPOCH=dt.datetime(2001,1,1,tzinfo=dt.timezone.utc)
@@ -32,7 +33,8 @@ def metadata(recipient,database,guid=None,prefer_current=False,latest=False):
         if current['recipient']==recipient and gs.read(sync.AUTH).get('scope')==sync.scope(current):known=uuid.UUID(current['session_hex'])
     except (OSError,ValueError,KeyError,TypeError):pass
     with closing(db_open(database)) as db:
-        where='h.id=? AND m.balloon_bundle_id=?';args=[sender,sync.BUNDLE]
+        scope,scope_args=recipient_predicate(db,sender)
+        where=scope+' AND m.balloon_bundle_id=?';args=list(scope_args)+[sync.BUNDLE]
         if guid:
             uuid.UUID(guid);where+=' AND upper(m.guid)=upper(?)';args.append(guid)
         # Only compare an already-authorized session UUID in SQLite. No URLs,
@@ -41,7 +43,7 @@ def metadata(recipient,database,guid=None,prefer_current=False,latest=False):
         if known:
             match='(instr(m.payload_data,?)>0 OR instr(m.payload_data,?)>0 OR instr(m.payload_data,?)>0)'
             prefix=[known.bytes,str(known).encode(),str(known).upper().encode()]
-        rows=db.execute('SELECT m.ROWID,m.guid,m.date,m.is_from_me,length(m.payload_data),'+match+' FROM message m JOIN handle h ON h.ROWID=m.handle_id WHERE '+where+' ORDER BY m.date DESC,m.ROWID DESC LIMIT 21',prefix+args).fetchall()
+        rows=db.execute('SELECT m.ROWID,m.guid,m.date,m.is_from_me,length(m.payload_data),'+match+' FROM message m WHERE '+where+' ORDER BY m.date DESC,m.ROWID DESC LIMIT 21',prefix+args).fetchall()
     if guid and len(rows)!=1:raise ValueError('selected_bubble_unavailable')
     # Bubble-open fallback resumes the current authorized game only when the
     # newest visible metadata row belongs to it. Older unrelated games remain
@@ -101,19 +103,20 @@ def selected(request,database,serialize=wire):
     if len(chosen)!=1:raise ValueError('selection_required')
     chosen=chosen[0];recipient=ticket['recipient'];sender=handle(recipient)
     with closing(db_open(database)) as db:
-        args=(chosen['rowid'],chosen['guid'],chosen['date'],chosen['outgoing'],sender,sync.BUNDLE)
-        row=db.execute('SELECT m.payload_data FROM message m JOIN handle h ON h.ROWID=m.handle_id WHERE m.ROWID=? AND m.guid=? AND m.date=? AND m.is_from_me=? AND h.id=? AND m.balloon_bundle_id=?',args).fetchone()
+        scope,scope_args=recipient_predicate(db,sender)
+        args=(chosen['rowid'],chosen['guid'],chosen['date'],chosen['outgoing'])+scope_args+(sync.BUNDLE,)
+        row=db.execute('SELECT m.payload_data FROM message m WHERE m.ROWID=? AND m.guid=? AND m.date=? AND m.is_from_me=? AND '+scope+' AND m.balloon_bundle_id=?',args).fetchone()
         if row is None:raise ValueError('selected_bubble_changed')
         selected_payload=row[0];picked=facts(selected_payload);session=picked['session'];f=gs.fields(picked['url'])
         gs.board(picked['url'])
-        predicate='h.id=? AND m.balloon_bundle_id=? AND (instr(m.payload_data,?)>0 OR instr(m.payload_data,?)>0 OR instr(m.payload_data,?)>0)'
-        params=(sender,sync.BUNDLE,session.bytes,str(session).encode(),str(session).upper().encode())
-        rows=db.execute('SELECT m.ROWID,m.is_from_me,length(m.payload_data) FROM message m JOIN handle h ON h.ROWID=m.handle_id WHERE '+predicate+' ORDER BY m.date DESC,m.ROWID DESC LIMIT 65',params).fetchall()
+        predicate=scope+' AND m.balloon_bundle_id=? AND (instr(m.payload_data,?)>0 OR instr(m.payload_data,?)>0 OR instr(m.payload_data,?)>0)'
+        params=scope_args+(sync.BUNDLE,session.bytes,str(session).encode(),str(session).upper().encode())
+        rows=db.execute('SELECT m.ROWID,m.is_from_me,length(m.payload_data) FROM message m WHERE '+predicate+' ORDER BY m.date DESC,m.ROWID DESC LIMIT 65',params).fetchall()
         if len(rows)>64:raise ValueError('history_limit')
         turns=[];owns=[]
         for rowid,out,size in rows:
             if size is None or not 0<size<=MAX_BYTES:raise ValueError('payload_limit')
-            raw=db.execute('SELECT m.payload_data FROM message m JOIN handle h ON h.ROWID=m.handle_id WHERE m.ROWID=? AND '+predicate,(rowid,)+params).fetchone()[0]
+            raw=db.execute('SELECT m.payload_data FROM message m WHERE m.ROWID=? AND '+predicate,(rowid,)+params).fetchone()[0]
             item=facts(raw)
             if item['session']!=session:raise ValueError('session_identity')
             fields=gs.fields(item['url'])

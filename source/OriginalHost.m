@@ -196,6 +196,7 @@ static NSDictionary *fields(id message){NSMutableDictionary *d=[NSMutableDiction
 @property(nonatomic,strong)NativeMain *host;
 @property(nonatomic,strong)UIView *sceneView;
 @property(nonatomic,strong)UIAlertController *invitationAlert;
+@property(nonatomic,strong)UIAlertAction *invitationSendAction;
 @property(nonatomic,strong)UIAlertController *localAlert;
 @property(nonatomic,copy)NSString *localRevision;
 @property(nonatomic,copy)NSString *invitationID;
@@ -326,6 +327,12 @@ static NSDictionary *fields(id message){NSMutableDictionary *d=[NSMutableDiction
  [self placeEntry:self.helpEntry node:@"helpButton" fallback:CGPointMake(28,682)];[self placeEntry:self.settingsEntry node:@"settingsButton" fallback:CGPointMake(347,682)];
  self.view.window.windowScene.sizeRestrictions.minimumSize=CGSizeMake(320,500);self.view.window.windowScene.sizeRestrictions.maximumSize=CGSizeMake(4096,4096);
 }
+- (void)invitationPhoneChanged:(UITextField *)field{
+ NSString *address=[field.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+ NSCharacterSet *allowed=[NSCharacterSet characterSetWithCharactersInString:@"+0123456789 ()-"];
+ NSString *digits=[[address componentsSeparatedByCharactersInSet:NSCharacterSet.decimalDigitCharacterSet.invertedSet]componentsJoinedByString:@""];
+ self.invitationSendAction.enabled=[address hasPrefix:@"+"] && [address rangeOfCharacterFromSet:allowed.invertedSet].location==NSNotFound && digits.length>=7 && digits.length<=15;
+}
 - (void)pollInvitation{
  NSDictionary *prompt=readNative(@"native-invitation-prompt.json");NSString *identifier=prompt[@"id"],*connection=prompt[@"connection_id"];
  BOOL valid=[identifier isKindOfClass:NSString.class] && [connection isKindOfClass:NSString.class] && [prompt[@"expires_at"]doubleValue]>NSDate.date.timeIntervalSince1970;
@@ -333,10 +340,16 @@ static NSDictionary *fields(id message){NSMutableDictionary *d=[NSMutableDiction
  if(!valid || [identifier isEqualToString:self.invitationID] || self.presentedViewController || !self.menuOpen)return;
  self.invitationID=identifier;
  NSString *error=prompt[@"error"];BOOL failed=[error isKindOfClass:NSString.class];
- UIAlertController *alert=[UIAlertController alertControllerWithTitle:failed?@"Cannot start game":prompt[@"title"] message:failed?error:[NSString stringWithFormat:@"Send a new game to %@?",prompt[@"target"]?:@"the open conversation"] preferredStyle:UIAlertControllerStyleAlert];
+ BOOL needsPhone=[prompt[@"requires_phone"]boolValue];
+ NSString *message=failed?error:(needsPhone?[NSString stringWithFormat:@"Enter the iMessage phone number for %@, including +country code, to send this invitation.",prompt[@"target"]?:@"the open conversation"]:[NSString stringWithFormat:@"Send a new game to %@?",prompt[@"target"]?:@"the open conversation"]);
+ UIAlertController *alert=[UIAlertController alertControllerWithTitle:failed?@"Cannot start game":prompt[@"title"] message:message preferredStyle:UIAlertControllerStyleAlert];
+ if(!failed && needsPhone)[alert addTextFieldWithConfigurationHandler:^(UITextField *field){field.placeholder=@"+1 555 555 0123";field.keyboardType=UIKeyboardTypePhonePad;[field addTarget:self action:@selector(invitationPhoneChanged:) forControlEvents:UIControlEventEditingChanged];}];
  self.invitationAlert=alert;
  __weak NativeVC *weakSelf=self;
- if(!failed)[alert addAction:[UIAlertAction actionWithTitle:@"Send invitation" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){save(@{@"id":identifier,@"connection_id":connection,@"action":@"send"},@"native-invitation-response.json");weakSelf.invitationAlert=nil;}]];
+ if(!failed){self.invitationSendAction=[UIAlertAction actionWithTitle:@"Send invitation" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){
+  NSString *address=needsPhone?[alert.textFields.firstObject.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]:@"";
+  save(@{@"id":identifier,@"connection_id":connection,@"action":@"send",@"address":address?:@""},@"native-invitation-response.json");weakSelf.invitationAlert=nil;
+ }];self.invitationSendAction.enabled=!needsPhone;[alert addAction:self.invitationSendAction];}
  [alert addAction:[UIAlertAction actionWithTitle:failed?@"OK":@"Cancel" style:failed?UIAlertActionStyleDefault:UIAlertActionStyleCancel handler:^(UIAlertAction *action){save(@{@"id":identifier,@"connection_id":connection,@"action":@"cancel"},@"native-invitation-response.json");weakSelf.invitationAlert=nil;}]];
  [self presentViewController:alert animated:YES completion:nil];
 }

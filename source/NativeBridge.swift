@@ -26,6 +26,8 @@ final class NativeTransport: ObservableObject {
     @Published var gameSyncReady = false
     @Published var gameSyncFailed = false
     @Published var pendingNewGame:String?
+    @Published var verifyLastConversation = false
+    private var pendingNewConversationName:String?
     private var pendingNewOptions:[String:String]=[:]
     private var pendingNewRecipient:String?
     private var pendingNewName=""
@@ -82,12 +84,18 @@ final class NativeTransport: ObservableObject {
     func openLocalGame(){guard localMode,local.ready,setupStep == .ready,let app=runtime.appURL else{return};write(["id":UUID().uuidString,"view":"board"],name:"native-view.json");NSWorkspace.shared.openApplication(at:app,configuration:NSWorkspace.OpenConfiguration()){_,_ in}}
     func connect() { guard !localMode else{return};disconnected=false; if !accountStarted {accountStarted=true;account.start()} else if !account.busy && !["login","code","sms_choice"].contains(account.phase) {account.connectDelivery()} }
     func disconnect() {disconnected=true;accountStarted=false;account.disconnect();state=[:];tick()}
-    func openCurrentChatGame(){guard !localMode,setupStep == .ready else{return};guard let recipient=try? MessagesContext.currentHandle() else{status="Open and verify a Messages conversation first.";return};importer.request(recipient:recipient,preferCurrent:true,latest:true)}
+    func openCurrentChatGame(){
+        guard !localMode,setupStep == .ready else{return}
+        guard let recipient=try? MessagesContext.currentHandle() else{
+            verifyLastConversation=true;return
+        }
+        importer.request(recipient:recipient,latest:true)
+    }
     func importOpenChat(){guard !localMode else{return};guard let recipient=try? MessagesContext.currentHandle() else{status="Verify the open conversation first.";return};importer.request(recipient:recipient)}
     func selectGame(_ choice:ImportChoice){guard !localMode else{return};pendingImport=choice;importer.status="Waiting for the current connection check to finish…";tick()}
     func resumeGame(_ game:SavedGame){guard !localMode else{return};pendingResume=game;importer.status="Waiting for the current connection check to finish…";tick()}
     func cancelImport(){pendingImport=nil;pendingResume=nil;importer.presented=false}
-    func cancelNewGame(){pendingNewGame=nil;pendingNewOptions=[:];pendingNewRecipient=nil;pendingNewID=nil;write([:],name:"native-invitation-prompt.json")}
+    func cancelNewGame(){pendingNewGame=nil;pendingNewOptions=[:];pendingNewRecipient=nil;pendingNewConversationName=nil;pendingNewID=nil;write([:],name:"native-invitation-prompt.json")}
     func confirmNewGame(){
         guard !localMode,setupStep == .ready else{cancelNewGame();return}
         guard let game=pendingNewGame,let recipient=pendingNewRecipient else{return}
@@ -182,17 +190,24 @@ final class NativeTransport: ObservableObject {
         let menuURL=directory.appendingPathComponent("native-menu-request.json")
         if let data=try? Data(contentsOf:menuURL),data.count<262144,let request=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],let id=request["id"] as? String,id != menuRequestID {
             menuRequestID=id
-            if let game=request["game"] as? String,GameCatalog.titles[game] != nil,setupStep == .ready,account.phoneAuthorized,let recipient=currentRecipient,!importer.busy,(!account.busy || account.receivingGame) {
-                pendingNewGame=game;pendingNewOptions=request["options"] as? [String:String] ?? [:];pendingNewRecipient=recipient;pendingNewName=opponentDisplay;pendingNewID=UUID().uuidString
+            if let game=request["game"] as? String,GameCatalog.titles[game] != nil,setupStep == .ready,account.phoneAuthorized,!importer.busy,(!account.busy || account.receivingGame),let name=MessagesContext.conversationName(),!name.isEmpty {
+                pendingNewGame=game;pendingNewOptions=request["options"] as? [String:String] ?? [:];pendingNewRecipient=currentRecipient;pendingNewConversationName=currentRecipient == nil ? name : nil;pendingNewName=currentRecipient == nil ? name : opponentDisplay;pendingNewID=UUID().uuidString
             }else{write(["id":UUID().uuidString,"connection_id":connectionID,"error":"Connect your account and verify the open Messages conversation first.","expires_at":Date().timeIntervalSince1970+15],name:"native-invitation-prompt.json")}
         }
         if let id=pendingNewID {
-            if currentRecipient != pendingNewRecipient {cancelNewGame()}
+            if pendingNewConversationName != nil ? MessagesContext.conversationName() != pendingNewConversationName : currentRecipient != pendingNewRecipient {cancelNewGame()}
             else {
-                write(["id":id,"connection_id":connectionID,"title":"Start \(newGameTitle)?","target":pendingNewName,"expires_at":Date().timeIntervalSince1970+3],name:"native-invitation-prompt.json")
+                write(["id":id,"connection_id":connectionID,"title":"Start \(newGameTitle)?","target":pendingNewName,"requires_phone":pendingNewConversationName != nil,"expires_at":Date().timeIntervalSince1970+3],name:"native-invitation-prompt.json")
                 let responseURL=directory.appendingPathComponent("native-invitation-response.json")
                 if let data=try? Data(contentsOf:responseURL),data.count<4096,let response=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],response["id"] as? String == id,response["connection_id"] as? String == connectionID {
-                    if response["action"] as? String == "send" {confirmNewGame()}else{cancelNewGame()}
+                    if response["action"] as? String == "send" {
+                        if let name=pendingNewConversationName {
+                            guard let address=response["address"] as? String,let recipient=MessagesContext.canonicalHandle(address),recipient.hasPrefix("tel:") else{pendingNewID=UUID().uuidString;return}
+                            do {try MessagesContext.verifyNamedConversation(name:name,address:address);pendingNewRecipient=recipient;pendingNewConversationName=nil}
+                            catch {cancelNewGame();return}
+                        }
+                        confirmNewGame()
+                    }else{cancelNewGame()}
                 }
             }
         }
@@ -295,7 +310,7 @@ struct NativeConnectionView:View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var hasCurrentGame:Bool {if bridge.localMode{return bridge.local.ready};return bridge.chatMatched && bridge.account.gameSample != nil}
     private var canPlayCurrent:Bool {bridge.localMode ? (bridge.local.ready && !bridge.local.busy && !bridge.local.handoff && !bridge.local.finished) : (bridge.account.canPlayGame || bridge.account.gameSample?.game == "crazy")}
-    private var canOpenLast:Bool {bridge.currentRecipient != nil && bridge.account.phoneAuthorized && bridge.runtime.ready && !bridge.importer.busy}
+    private var canOpenLast:Bool {bridge.account.phoneAuthorized && bridge.runtime.ready && !bridge.importer.busy}
     private var gameStatus:String {
         if bridge.localMode{return bridge.local.status}
         if bridge.account.gameFinished{return "Game finished"}
@@ -314,7 +329,10 @@ struct NativeConnectionView:View {
         }
         .sheet(isPresented:$showAccount){AccountView(connection:bridge.account,onConnect:bridge.connect)}
         .sheet(isPresented:$showSettings){settings}
-        .sheet(isPresented:$showConversation){conversationSheet}
+        .sheet(isPresented:$showConversation,onDismiss:{bridge.verifyLastConversation=false}){conversationSheet}
+        .onChange(of:bridge.verifyLastConversation){_,requested in
+            if requested {conversationName=MessagesContext.conversationName() ?? "";conversationAddress="";contactChoices=[];contactStatus="";showConversation=true}
+        }
     }
     private var onboarding:some View {
         VStack(alignment:.leading,spacing:24){
@@ -388,7 +406,7 @@ struct NativeConnectionView:View {
     }
     private var conversationSheet:some View {
             VStack(alignment:.leading,spacing:16){
-                HStack{Text("Verify conversation").font(.title2.bold());Spacer();Button("Cancel"){showConversation=false}}
+                HStack{Text("Verify conversation").font(.title2.bold());Spacer();Button("Cancel"){bridge.verifyLastConversation=false;showConversation=false}}
                 Text(conversationName.isEmpty ? "Open a conversation in Messages first." : "Messages shows: \(conversationName)")
                 Text("Confirm the iMessage address for this conversation. A contact name alone does not identify an address.").font(.callout).foregroundStyle(.secondary)
                 TextField("Phone number with +country code, or email",text:$conversationAddress)
@@ -402,7 +420,7 @@ struct NativeConnectionView:View {
                 ForEach(contactChoices,id:\.self){address in Button(String(address.dropFirst(address.hasPrefix("tel:") ? 4 : 7))){conversationAddress=String(address.dropFirst(address.hasPrefix("tel:") ? 4 : 7))}}
                 if !contactStatus.isEmpty {Text(contactStatus).font(.caption).fixedSize(horizontal:false,vertical:true)}
                 Button("Confirm address"){
-                    do{try MessagesContext.verifyNamedConversation(name:conversationName,address:conversationAddress);bridge.tick();showConversation=false}catch{contactStatus=error.localizedDescription}
+                    do{try MessagesContext.verifyNamedConversation(name:conversationName,address:conversationAddress);bridge.tick();showConversation=false;if bridge.verifyLastConversation {bridge.verifyLastConversation=false;bridge.openCurrentChatGame()}}catch{contactStatus=error.localizedDescription}
                 }.buttonStyle(.borderedProminent).disabled(MessagesContext.canonicalHandle(conversationAddress)==nil || conversationName.isEmpty)
             }.padding(24).frame(width:480)
     }

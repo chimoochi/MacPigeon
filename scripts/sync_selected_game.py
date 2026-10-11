@@ -3,6 +3,7 @@ import argparse, hashlib, json, plistlib, sqlite3, uuid
 from contextlib import closing
 from pathlib import Path
 from game_session import STORE, load, fields, reconcile, write
+from messages_scope import recipient_predicate
 
 BUNDLE='com.apple.messages.MSMessageExtensionBalloonPlugin:EWFNLB79LQ:com.gamerdelights.gamepigeon.ext'
 AUTH=STORE.with_name('messages-sync-authorization.json')
@@ -39,18 +40,19 @@ def synchronize(apply=True,database=None):
     session=uuid.UUID(original['session_hex'])
     database=database or Path.home()/'Library/Messages/chat.db'
     # Match the session's raw UUID inside the archive BEFORE fetching any payload.
-    predicate='h.id=? AND m.balloon_bundle_id=? AND (instr(m.payload_data,?)>0 OR instr(m.payload_data,?)>0 OR instr(m.payload_data,?)>0)'
-    args=(recipient,BUNDLE,session.bytes,str(session).encode(),str(session).upper().encode())
     state=original
     try:
         with closing(sqlite3.connect(database.as_uri()+'?mode=ro',uri=True,timeout=2)) as db:
             db.execute('PRAGMA query_only=ON');db.execute('BEGIN')
-            rows=db.execute('SELECT m.ROWID,m.is_from_me,length(m.payload_data) FROM message m JOIN handle h ON h.ROWID=m.handle_id WHERE '+predicate+' ORDER BY m.date DESC LIMIT 65',args).fetchall()
+            sql_scope,scope_args=recipient_predicate(db,recipient)
+            predicate=sql_scope+' AND m.balloon_bundle_id=? AND (instr(m.payload_data,?)>0 OR instr(m.payload_data,?)>0 OR instr(m.payload_data,?)>0)'
+            args=scope_args+(BUNDLE,session.bytes,str(session).encode(),str(session).upper().encode())
+            rows=db.execute('SELECT m.ROWID,m.is_from_me,length(m.payload_data) FROM message m WHERE '+predicate+' ORDER BY m.date DESC,m.ROWID DESC LIMIT 65',args).fetchall()
             if len(rows)>64:return {'status':'history_limit','updated':False}
             candidates=[]
             for rowid,outgoing,size in reversed(rows):
                 if size is None or not 0<size<=MAX_BYTES:raise ValueError('payload_limit')
-                row=db.execute('SELECT m.payload_data FROM message m JOIN handle h ON h.ROWID=m.handle_id WHERE m.ROWID=? AND '+predicate,(rowid,)+args).fetchone()
+                row=db.execute('SELECT m.payload_data FROM message m WHERE m.ROWID=? AND '+predicate,(rowid,)+args).fetchone()
                 if row is None or not isinstance(row[0],bytes):raise ValueError('payload_storage')
                 url=game_url(row[0]);f=fields(url)
                 if int(f.get('num','0'))<=int(original['board']['num']):continue

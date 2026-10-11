@@ -22,7 +22,7 @@ shutil.copy2(root / 'runtime/balloon/target/release/macpigeon-balloon-probe', re
 shutil.copytree(root / 'build/RendererHostTemplate.app', resources / 'RendererHostTemplate.app', symlinks=True)
 for name in ('local_play.py', 'export_native_state.py', 'sync_selected_game.py',
              'game_session.py', 'game_catalog.py', 'game_messages.py', 'new_games.py', 'connect_codec.py',
-             'import_mac_game.py', 'install_local_ipa.py',
+             'import_mac_game.py', 'messages_scope.py', 'install_local_ipa.py',
              'binary_adapter.py', 'decode_one_live_turn.py', 'local_anisette_worker.py',
              'push_bootstrap_worker.py', 'bundled_tls.py'):
     shutil.copy2(root / 'scripts' / name, resources / name)
@@ -49,8 +49,8 @@ for name in names:
 (resources / 'push-bootstrap-manifest.json').write_text(json.dumps(manifest))
 info = {'CFBundleIdentifier': 'local.macpigeon.native', 'CFBundleName': 'MacPigeon',
         'CFBundleExecutable': 'NativeBridge', 'CFBundlePackageType': 'APPL',
-        'CFBundleVersion': os.environ.get('MACPIGEON_BUILD_VERSION', '5'),
-        'CFBundleShortVersionString': os.environ.get('MACPIGEON_VERSION', '0.1.0-alpha.4'),
+        'CFBundleVersion': os.environ.get('MACPIGEON_BUILD_VERSION', '6'),
+        'CFBundleShortVersionString': os.environ.get('MACPIGEON_VERSION', '0.1.0-alpha.5'),
         'LSMinimumSystemVersion': '26.0',
         'NSContactsUsageDescription': 'Find the address for the one contact name shown in your open Messages conversation.'}
 (app / 'Contents/Info.plist').write_bytes(plistlib.dumps(info))
