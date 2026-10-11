@@ -1,0 +1,10 @@
+{
+  "pin": "cb2361c2a750ffa2047c1a64eda44c8fb8364218",
+  "offline_modules_only": true,
+  "source_sha256": {
+    "src/util.rs": "1f6b2cf17f944c5ace7c589192d9a2f99e64ed3735c8e93b2f60b59550231b14",
+    "src/imessage/rawmessages.rs": "7c38ace2ebd142a994f9f15bcfcfbd5c0f67b4a6379cc59899a0f77f8f6e2854",
+    "src/imessage/messages.rs": "f434a51fd5fcd38ec5cc37634e3b71f78f97f239a1da595cfe835cf70190b5ca",
+    "src/imessage/livelayout.bplist": "6673c132201b1a3d37b56f5552a7d0e6eed502cc086569da0e2daf9c704d78c4"
+  }
+}
