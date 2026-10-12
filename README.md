@@ -64,6 +64,8 @@ Open the app and use Settings to import a **decrypted GamePigeon IPA with intern
 
 No GamePigeon executable, artwork, IPA, or fallback renderer payload is embedded in this source build. Encrypted IPAs are rejected. The importer adapts a local copy and leaves the supplied IPA unchanged.
 
+After a launcher update, MacPigeon automatically updates the host inside your imported game while preserving the game executable and assets. Close the game window if prompted so the update can finish. The previous installation is retained as a recovery copy; importing the IPA again is unnecessary.
+
 Messages features require the relevant macOS permissions, account setup, and a matching conversation. Accessibility and Full Disk Access are configured in System Settings; Contacts lookup is optional. Account material is stored through the app's Keychain flow, and game state is stored locally in Application Support.
 
 App data is stored under `~/Library/Application Support/MacPigeon`. On first launch, files from the historical `MacPigeon Lab` directory are copied into the new folder; existing destination files take precedence, and the old folder is retained as a recovery copy. Its `SelectedTest` subfolder becomes `Delivery`. Migration finishes before account or game helpers start, and an unsuccessful migration can be retried. Settings → Open Data Folder opens the folder in Finder. Account sessions and delivery keys remain in Keychain, and renderer data remains in its macOS sandbox container.

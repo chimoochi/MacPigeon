@@ -164,6 +164,7 @@ final class NativeTransport: ObservableObject {
         try? FileManager.default.setAttributes([.posixPermissions:0o600],ofItemAtPath:url.path)
     }
     func tick() {
+        runtime.prepareInstalledHost()
         if localMode {tickLocal();return}
         if invitationSending && !account.busy && ["game_sent","game_error","error"].contains(account.phase) {
             invitationSending=false
@@ -366,8 +367,8 @@ struct NativeConnectionView:View {
                 if !bridge.diskFeedback.isEmpty {Text(bridge.diskFeedback).font(.callout).foregroundStyle(.secondary)}
                 if bridge.diskCheckFailed {permissionTip("Full Disk Access")}
             case .gameImport:
-                setupCard(icon:"gamecontroller",title:"Add GamePigeon",detail:"Choose your decrypted GamePigeon IPA to load the game interface.")
-                Button(bridge.runtime.busy ? "Importing…" : "Choose IPA…"){bridge.runtime.chooseIPA()}.buttonStyle(.borderedProminent).disabled(bridge.runtime.busy)
+                setupCard(icon:"gamecontroller",title:bridge.runtime.busy ? "Preparing GamePigeon" : "Add GamePigeon",detail:bridge.runtime.busy ? "Updating your imported game interface." : "Choose your decrypted GamePigeon IPA to load the game interface.")
+                Button(bridge.runtime.busy ? "Preparing…" : "Choose IPA…"){bridge.runtime.chooseIPA()}.buttonStyle(.borderedProminent).disabled(bridge.runtime.busy)
                 if !bridge.runtime.status.isEmpty {Text(bridge.runtime.status).fixedSize(horizontal:false,vertical:true)}
             case .ready: EmptyView()
             }

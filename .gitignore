@@ -3,7 +3,8 @@
 /.build-inputs/
 /private/
 /reports/
-/tests/
+/tests/*
+!/tests/HostUpgrade.py
 **/target/
 **/__pycache__/
 *.pyc

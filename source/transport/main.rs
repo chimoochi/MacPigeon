@@ -191,7 +191,8 @@ async fn receive_test(v:&Json)->Result<Json> {
     std::fs::set_permissions(&cache,std::fs::Permissions::from_mode(0o600)).map_err(|_|"cache_permissions")?;
     static SERVICES:&[&rustpush::IDSService]=&[&MADRID_SERVICE];
     let client=rustpush::IMClient::new(conn.clone(),vec![saved.user.clone()],saved.identity.clone(),SERVICES,cache,config,Box::new(|_|{})).await;
-    let deadline=tokio::time::sleep(Duration::from_secs(90));tokio::pin!(deadline);
+    let wait_seconds=match v.get("wait_seconds") {None=>90,Some(value)=>value.as_u64().filter(|seconds|(1..=90).contains(seconds)).ok_or("receive_wait_schema")?};
+    let deadline=tokio::time::sleep(Duration::from_secs(wait_seconds));tokio::pin!(deadline);
     let routing="com.apple.messages.MSMessageExtensionBalloonPlugin:EWFNLB79LQ:com.gamerdelights.gamepigeon.ext";
     let mut matched=None;let mut verification_failed=false;
     loop {tokio::select! {

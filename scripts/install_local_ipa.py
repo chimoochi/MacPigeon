@@ -3,6 +3,36 @@ import hashlib,json,os,plistlib,shutil,stat,subprocess,sys,tempfile,zipfile
 from pathlib import Path,PurePosixPath
 from binary_adapter import adapt
 
+def refresh_host(resources,destination):
+ """Update launcher-owned host files without requiring the original IPA again."""
+ resources=Path(resources);destination=Path(destination)
+ marker=destination/'Contents/Resources/local-import.json'
+ if not marker.is_file():return {'ok':True,'updated':False}
+ template=resources/'RendererHostTemplate.app'
+ names=['Contents/MacOS/OriginalHost','Contents/Info.plist','Contents/Resources/macpigeon-game-registry.json']
+ metadata=json.loads(marker.read_text())
+ # Signing changes the executable's signature bytes. Compare its template hash,
+ # recorded before signing, rather than the installed signed executable.
+ template_hash=hashlib.sha256((template/names[0]).read_bytes()).hexdigest()
+ if metadata.get('host_sha256')==template_hash and all((destination/name).read_bytes()==(template/name).read_bytes() for name in names[1:]):
+  return {'ok':True,'updated':False}
+ subprocess.run(['codesign','--verify','--deep','--strict',str(destination)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30)
+ with tempfile.TemporaryDirectory(prefix='host-update-',dir=destination.parent) as tmp:
+  stage=Path(tmp)/destination.name;shutil.copytree(destination,stage,symlinks=True)
+  for name in names:shutil.copy2(template/name,stage/name)
+  metadata['host_sha256']=template_hash
+  (stage/'Contents/Resources/local-import.json').write_text(json.dumps(metadata))
+  entitlements=Path(tmp)/'sandbox.plist';entitlements.write_bytes(plistlib.dumps({'com.apple.security.app-sandbox':True,'com.apple.security.network.client':True}))
+  subprocess.run(['codesign','--force','--sign','-','--entitlements',str(entitlements),str(stage)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30)
+  subprocess.run(['codesign','--verify','--deep','--strict',str(stage)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30)
+  previous=destination.with_name(destination.stem+' Previous.app')
+  if previous.exists():shutil.rmtree(previous)
+  destination.rename(previous)
+  try:stage.rename(destination)
+  except OSError:
+   previous.rename(destination);raise
+ return {'ok':True,'updated':True}
+
 def install(ipa,resources,destination):
  ipa=Path(ipa);resources=Path(resources);destination=Path(destination)
  if not ipa.is_file() or ipa.stat().st_size>300*1024*1024:raise ValueError('ipa_limit')
@@ -55,7 +85,9 @@ def install(ipa,resources,destination):
 
 def main():
  request=json.loads(sys.stdin.buffer.readline(8193))
- try:result=install(request['ipa'],Path(__file__).resolve().parent,Path.home()/'Library/Application Support/MacPigeon/Installed/MacPigeon Game.app')
+ try:
+  resources=Path(__file__).resolve().parent;destination=Path.home()/'Library/Application Support/MacPigeon/Installed/MacPigeon Game.app'
+  result=refresh_host(resources,destination) if request.get('action')=='refresh_host' else install(request['ipa'],resources,destination)
  except (ValueError,KeyError,OSError,zipfile.BadZipFile,plistlib.InvalidFileException,subprocess.SubprocessError):result={'ok':False,'error':'The IPA could not be imported. Use the supported decrypted GamePigeon version; the previous installation is kept.'}
  print(json.dumps(result))
 if __name__=='__main__':main()

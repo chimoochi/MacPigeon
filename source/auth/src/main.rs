@@ -394,7 +394,8 @@ async fn main() {
                     save_transport_ack(&account,saved,&mut input)?;
                     let validation=ids_access::validation_data().await?;
                     let exclusions=game["seen_url_hashes"].clone();
-                    let mut received=delivery::worker(json!({"action":"receive_test","state":saved["backend"],"keychain_saved":true,"test_receive_authorized":true,"recipient":game["recipient"],"session_hex":game["session_hex"],"validation":validation,"excluded_url_hashes":exclusions,
+                    // Keep passive polling short so a queued invitation can send promptly.
+                    let mut received=delivery::worker(json!({"action":"receive_test","wait_seconds":10,"state":saved["backend"],"keychain_saved":true,"test_receive_authorized":true,"recipient":game["recipient"],"session_hex":game["session_hex"],"validation":validation,"excluded_url_hashes":exclusions,
                         "support_directory":PathBuf::from(std::env::var("HOME").map_err(|_|ids_access::fail("support_path"))?).join("Library/Application Support/MacPigeon/Transport")}))?;
                     if received["state"].is_string(){transport_saved.as_mut().unwrap()["backend"]=received["state"].take();save_transport_ack(&account,transport_saved.as_ref().unwrap(),&mut input)?;}
                     if received["ok"]==true {
