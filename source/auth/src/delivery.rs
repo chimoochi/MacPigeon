@@ -3,7 +3,30 @@ use std::{io::Write,process::{Command,Stdio}};
 use serde_json::Value;
 use zeroize::Zeroize;
 use crate::ids_access::{Failure,fail};
-pub fn worker(mut request:Value)->Result<Value,Failure> {
+pub fn worker(request:Value)->Result<Value,Failure> {
+    run_worker(request,None)
+}
+pub fn receive_validation(control:&crate::receive_control::ReceiveControl)->Result<String,Failure> {
+    control.check()?;
+    let exe=std::env::current_exe().map_err(|_|fail("delivery_worker_path"))?;
+    let home=std::env::var("HOME").map_err(|_|fail("support_path"))?;
+    // Native validation can block its thread on Apple's handshake. Isolate it
+    // so cancelling a passive receive can stop that handshake immediately too.
+    let child=Command::new(exe).arg("--receive-validation").env_clear()
+        .env("HOME",home).env("LANG","en_US.UTF-8")
+        .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null())
+        .spawn().map_err(|_|fail("delivery_worker_start"))?;
+    let mut out=crate::receive_control::wait_output(child,control)?;
+    let parsed=serde_json::from_slice::<Value>(&out.stdout);out.stdout.zeroize();
+    let mut value=parsed.map_err(|_|fail("delivery_worker_schema"))?;
+    if !out.status.success()||value["ok"]!=true {return Err(fail("receive_validation_failed"));}
+    value["validation"].take().as_str().map(str::to_owned).ok_or(fail("delivery_worker_schema"))
+}
+pub fn receive_worker(request:Value,control:&crate::receive_control::ReceiveControl)->Result<Value,Failure> {
+    control.check()?;
+    run_worker(request,Some(control))
+}
+fn run_worker(mut request:Value,control:Option<&crate::receive_control::ReceiveControl>)->Result<Value,Failure> {
     let exe=std::env::current_exe().map_err(|_|fail("delivery_worker_path"))?;
     let path=exe.parent().ok_or(fail("delivery_worker_path"))?.join("macpigeon-transport");
     let mut child=Command::new(path).env_clear().env("LANG","en_US.UTF-8")
@@ -13,7 +36,7 @@ pub fn worker(mut request:Value)->Result<Value,Failure> {
     // Drop sensitive JSON immediately after private serialization.
     request.take();drop(input);
     if written.is_err(){let _=child.kill();let _=child.wait();return Err(fail("delivery_worker_pipe"));}
-    let mut out=child.wait_with_output().map_err(|_|fail("delivery_worker_exit"))?;
+    let mut out=if let Some(control)=control {crate::receive_control::wait_output(child,control)?}else{child.wait_with_output().map_err(|_|fail("delivery_worker_exit"))?};
     if !out.status.success()||out.stdout.len()>1_048_576 {out.stdout.zeroize();return Err(fail("delivery_worker_exit"));}
     let parsed=serde_json::from_slice(&out.stdout);out.stdout.zeroize();parsed.map_err(|_|fail("delivery_worker_schema"))
 }

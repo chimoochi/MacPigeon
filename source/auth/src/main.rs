@@ -9,6 +9,7 @@ mod account_certificate;
 mod push_access;
 mod transport_state;
 mod delivery;
+mod receive_control;
 use base64::{Engine,engine::general_purpose::STANDARD};
 // JSON's byte arrays need a JSON reader; the upstream plist::Data visitor
 // accepts binary plist data but cannot read its own JSON array serialization.
@@ -149,6 +150,13 @@ async fn show_state(account: &mut Account, mut state: LoginState, sms: &mut Opti
 async fn main() {
     // Never enable a logger or display panic values from upstream parsing.
     std::panic::set_hook(Box::new(|_| {}));
+    if std::env::args().any(|a|a=="--receive-validation") {
+        match ids_access::validation_data().await {
+            Ok(validation)=>emit(json!({"ok":true,"validation":validation})),
+            Err(_)=>emit(json!({"ok":false})),
+        }
+        return;
+    }
     let provider = Arc::new(tokio::sync::Mutex::new(AnisetteClient::new(LocalProvider {worker:None})));
     let preflight = std::env::args().any(|a|a == "--preflight");
     let headers = match provider.lock().await.get_headers().await { Ok(h) => h.clone(), Err(_) => {
@@ -381,6 +389,7 @@ async fn main() {
             }
             "receive_game" => {
                 let result=async {
+                    let control=receive_control::ReceiveControl::new(command["receive_id"].as_str())?;
                     let saved=transport_saved.as_ref().ok_or(ids_access::fail("saved_identity_required"))?;
                     let mut game=delivery::game(json!({"action":"load"}))?;
                     // Recover a turn reserved before a crash without retransmitting it.
@@ -391,12 +400,13 @@ async fn main() {
                             game=delivery::game(json!({"action":"commit","state":prepared}))?;
                         }
                     }
-                    save_transport_ack(&account,saved,&mut input)?;
-                    let validation=ids_access::validation_data().await?;
+                    // This identity is already persisted. Do not block a passive check
+                    // on another redundant Keychain acknowledgment before receiving.
+                    let validation=delivery::receive_validation(&control)?;
                     let exclusions=game["seen_url_hashes"].clone();
                     // Keep passive polling short so a queued invitation can send promptly.
-                    let mut received=delivery::worker(json!({"action":"receive_test","wait_seconds":10,"state":saved["backend"],"keychain_saved":true,"test_receive_authorized":true,"recipient":game["recipient"],"session_hex":game["session_hex"],"validation":validation,"excluded_url_hashes":exclusions,
-                        "support_directory":PathBuf::from(std::env::var("HOME").map_err(|_|ids_access::fail("support_path"))?).join("Library/Application Support/MacPigeon/Transport")}))?;
+                    let mut received=delivery::receive_worker(json!({"action":"receive_test","wait_seconds":10,"state":saved["backend"],"keychain_saved":true,"test_receive_authorized":true,"recipient":game["recipient"],"session_hex":game["session_hex"],"validation":validation,"excluded_url_hashes":exclusions,
+                        "support_directory":PathBuf::from(std::env::var("HOME").map_err(|_|ids_access::fail("support_path"))?).join("Library/Application Support/MacPigeon/Transport")}),&control)?;
                     if received["state"].is_string(){transport_saved.as_mut().unwrap()["backend"]=received["state"].take();save_transport_ack(&account,transport_saved.as_ref().unwrap(),&mut input)?;}
                     if received["ok"]==true {
                         game=delivery::game(json!({"action":"receive","url":received["url"]}))?;

@@ -5,6 +5,7 @@
 /reports/
 /tests/*
 !/tests/HostUpgrade.py
+!/tests/AccountLifecycle.swift
 **/target/
 **/__pycache__/
 *.pyc

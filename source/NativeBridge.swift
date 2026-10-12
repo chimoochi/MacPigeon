@@ -60,6 +60,7 @@ final class NativeTransport: ObservableObject {
             account.phoneAuthorized=step>0;permissionGranted=step>1;fullDiskAccessGranted=step>2
             return // Isolated UI preview: no helper, timer, database check, or transport.
         }
+        runtime.prepareInstalledHost()
         bubbleOpener.showGame = { [weak self] in self?.tick(); self?.openBoard() }
         bubbleOpener.importGame = { [weak self] recipient,guid in guard let self,!self.localMode else{return};self.importer.request(recipient:recipient,guid:guid,preferCurrent:true) }
         importer.openCurrent = { [weak self] in
@@ -128,7 +129,7 @@ final class NativeTransport: ObservableObject {
     func recheckDiskAccess(){checkDiskAccess();diskCheckFailed = !fullDiskAccessGranted;diskFeedback=fullDiskAccessGranted ? "Access confirmed." : "Access is still disabled."}
     func openDiskSettings(){if let url=URL(string:"x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"){NSWorkspace.shared.open(url)}}
     func openMenu(){
-        guard setupStep == .ready else{return}
+        guard runtime.ready else{return}
         guard let app=runtime.appURL else{return}
         try? FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
         write(["id":UUID().uuidString,"view":"menu"],name:"native-view.json")
@@ -371,6 +372,9 @@ struct NativeConnectionView:View {
                 Button(bridge.runtime.busy ? "Preparing…" : "Choose IPA…"){bridge.runtime.chooseIPA()}.buttonStyle(.borderedProminent).disabled(bridge.runtime.busy)
                 if !bridge.runtime.status.isEmpty {Text(bridge.runtime.status).fixedSize(horizontal:false,vertical:true)}
             case .ready: EmptyView()
+            }
+            if bridge.runtime.ready {
+                Button("Open menu"){bridge.openMenu()}.buttonStyle(.bordered)
             }
         }.padding(28).frame(width:440,alignment:.leading)
     }

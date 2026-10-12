@@ -66,6 +66,7 @@ final class AccountConnection: ObservableObject {
     private var receiveAgain: DispatchWorkItem?
     private var receiveFailures = 0
     @Published private(set) var receivingGame = false
+    private var receiveID:String?
     private var gamePollingEnabled = true
     private var queuedInvitation:(game:String,options:[String:String],recipient:String,invitation:[String:String]?)?
     private var helperGeneration=0
@@ -117,7 +118,7 @@ final class AccountConnection: ObservableObject {
             if let game = event["game"], let data = try? JSONSerialization.data(withJSONObject: game), let sample = try? JSONDecoder().decode(GameSample.self, from: data) {
                 gameSample = sample; gameRevision += 1
             }
-            receivingGame=false
+            finishPassiveReceive()
             canPlayGame = event["can_play"] as? Bool ?? false
             gameRecipient = event["recipient"] as? String ?? gameRecipient
             ownPlayer = event["own_player"] as? Int ?? ownPlayer
@@ -130,7 +131,7 @@ final class AccountConnection: ObservableObject {
             return
         }
         if ["game_error", "game_receive_error", "game_unavailable"].contains(kind) {
-            receivingGame=false
+            finishPassiveReceive()
             busy = false; phase = kind; gameStatus = event["message"] as? String ?? "Game unavailable."
             status = gameStatus
             if kind == "game_error" { canPlayGame = false }
@@ -256,8 +257,9 @@ final class AccountConnection: ObservableObject {
     }
     #if OFFLINE_TESTS
     var fixtureRecipient:String?
+    var fixtureCancelledReceives:[String]=[]
     var fixtureCommands:[[String:Any]]=[]
-    func beginReceiveFixture(){receivingGame=true;busy=true}
+    func beginReceiveFixture(){receiveID=UUID().uuidString;receivingGame=true;busy=true}
     func applyFixture(_ event:[String:Any]){receive(event)}
     #endif
     func restoreSession() {
@@ -345,7 +347,10 @@ final class AccountConnection: ObservableObject {
     @discardableResult func startGame(game:String,options:[String:String],recipient:String,invitation:[String:String]?=nil)->Bool {
         guard (!busy || receivingGame),queuedInvitation==nil,phoneAuthorized,invitationRecipient()==recipient else{return false}
         receiveAgain?.cancel()
-        if receivingGame {queuedInvitation=(game,options,recipient,invitation);gameStatus="Finishing the current connection check…";status=gameStatus;return true}
+        if receivingGame {
+            guard cancelPassiveReceive() else{gameStatus="Couldn’t stop the connection check. Try again.";status=gameStatus;return false}
+            queuedInvitation=(game,options,recipient,invitation);gameStatus="Preparing invitation…";status=gameStatus;return true
+        }
         busy=true;canPlayGame=false;gameStatus="Sending invitation…"
         var request:[String:Any]=["action":"start_game","game":game,"options":options,"recipient":recipient]
         if let invitation {request["native_invitation"]=invitation}
@@ -359,6 +364,32 @@ final class AccountConnection: ObservableObject {
         }
         return true
     }
+    private func cancelPassiveReceive()->Bool {
+        guard let id=receiveID else{return false}
+        #if OFFLINE_TESTS
+        if fixtureRecipient != nil {fixtureCancelledReceives.append(id);return true}
+        #endif
+        let directory=DataStorage.root.appendingPathComponent("Transport",isDirectory:true)
+        do {
+            try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
+            let marker=directory.appendingPathComponent("receive-cancel-"+id)
+            try Data().write(to:marker,options:.atomic)
+            try FileManager.default.setAttributes([.posixPermissions:0o600],ofItemAtPath:marker.path)
+            return true
+        }catch{return false}
+    }
+    private func finishPassiveReceive(){
+        if let id=receiveID {
+            #if OFFLINE_TESTS
+            if fixtureRecipient==nil {
+                try? FileManager.default.removeItem(at:DataStorage.root.appendingPathComponent("Transport/receive-cancel-"+id))
+            }
+            #else
+            try? FileManager.default.removeItem(at:DataStorage.root.appendingPathComponent("Transport/receive-cancel-"+id))
+            #endif
+        }
+        receivingGame=false;receiveID=nil
+    }
     func setGamePollingEnabled(_ enabled:Bool) {
         guard enabled != gamePollingEnabled else{return}
         gamePollingEnabled=enabled
@@ -371,8 +402,9 @@ final class AccountConnection: ObservableObject {
         guard gamePollingEnabled,queuedInvitation==nil,gameSample?.game != "crazy" else{return}
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.gamePollingEnabled,self.queuedInvitation==nil,self.gameSample?.game != "crazy",!self.busy, !self.canPlayGame, !self.gameFinished, self.phoneAuthorized else { return }
+            let id=UUID().uuidString;self.receiveID=id
             self.receivingGame=true;self.busy = true; self.gameStatus = "Waiting for your friend…"; self.status = self.gameStatus
-            self.send(["action": "receive_game"])
+            self.send(["action": "receive_game","receive_id":id])
         }
         receiveAgain = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
@@ -381,7 +413,7 @@ final class AccountConnection: ObservableObject {
     func receiveSelectedReply() { busy = true; status = "Watching for your friend’s reply in the selected game for up to 90 seconds…"; send(["action": "receive_selected_test_reply"]) }
     func disconnect() {
         helperGeneration+=1
-        receiveAgain?.cancel(); receiveAgain=nil; receiveFailures=0;receivingGame=false;queuedInvitation=nil
+        receiveAgain?.cancel(); receiveAgain=nil; receiveFailures=0;receivingGame=false;receiveID=nil;queuedInvitation=nil
         process?.terminationHandler=nil
         try? input?.close(); process?.terminate(); process=nil; input=nil
         autoConnected=false; phoneAuthorized=false; canPlayGame=false; gameSample=nil
