@@ -10,6 +10,7 @@ mod push_access;
 mod transport_state;
 mod delivery;
 mod receive_control;
+mod receive_session;
 use base64::{Engine,engine::general_purpose::STANDARD};
 // JSON's byte arrays need a JSON reader; the upstream plist::Data visitor
 // accepts binary plist data but cannot read its own JSON array serialization.
@@ -187,6 +188,7 @@ async fn main() {
     let mut push_state = None;
     let mut transport_saved:Option<Value> = None;
     let mut transport_profile:Option<String> = None;
+    let mut receive_session:Option<receive_session::ReceiveSession> = None;
     emit(json!({"type":"ready"}));
     let mut input = io::stdin().lock();
     loop {
@@ -199,6 +201,7 @@ async fn main() {
         let mut command = match parsed {Ok(c)=>c,Err(_)=>break};
         match command["action"].as_str().unwrap_or("") {
             "login" => {
+                receive_session=None;
                 let mut email = command["email"].take().as_str().unwrap_or("").trim().to_owned();
                 let mut password = command["password"].take().as_str().unwrap_or("").to_owned();
                 if email.is_empty() || password.is_empty() { email.zeroize();password.zeroize();emit(json!({"type":"error","message":"Enter your Apple Account and password."}));continue; }
@@ -215,6 +218,7 @@ async fn main() {
             }
             "sms" => {if let Some(id)=command["id"].as_u64().filter(|v|*v<=u32::MAX as u64) {match account.send_sms_2fa_to_devices(id as u32).await {Ok(state)=>if let Err(e)=show_state(&mut account,state,&mut sms,transport_saved.as_ref()).await {safe_error(e)},Err(e)=>safe_error(e)}}}
             "restore" => {
+                receive_session=None;
                 // Retain an already authenticated local session in memory; never silently login/register.
                 let mut saved=command["data"].take();
                 let candidate=saved.as_object_mut().and_then(|d|d.remove("transport_state"));
@@ -291,6 +295,7 @@ async fn main() {
                 emit_session(&account,transport_saved.as_ref(),false);
             }
             "connect_delivery" => {
+                receive_session=None;
                 let result=async {
                     if transport_saved.is_some()&&transport_profile.is_none() {return Err(ids_access::fail("saved_identity_repair_required"));}
                     if ids_access.is_none() {ids_access=Some(ids_access::check(&mut account).await?);}
@@ -352,6 +357,9 @@ async fn main() {
                 }
             }
             "send_native_turn" | "start_game" => {
+                // Hand the delivery identity to the sender without competing
+                // sockets. Idle message polls reuse their own live connection.
+                receive_session=None;
                 let mut worker_called=false;
                 let result=async {
                     let saved=transport_saved.as_ref().ok_or(ids_access::fail("saved_identity_required"))?;
@@ -402,11 +410,20 @@ async fn main() {
                     }
                     // This identity is already persisted. Do not block a passive check
                     // on another redundant Keychain acknowledgment before receiving.
-                    let validation=delivery::receive_validation(&control)?;
                     let exclusions=game["seen_url_hashes"].clone();
-                    // Keep passive polling short so a queued invitation can send promptly.
-                    let mut received=delivery::receive_worker(json!({"action":"receive_test","wait_seconds":10,"state":saved["backend"],"keychain_saved":true,"test_receive_authorized":true,"recipient":game["recipient"],"session_hex":game["session_hex"],"validation":validation,"excluded_url_hashes":exclusions,
-                        "support_directory":PathBuf::from(std::env::var("HOME").map_err(|_|ids_access::fail("support_path"))?).join("Library/Application Support/MacPigeon/Transport")}),&control)?;
+                    if receive_session.as_ref().map(|session|!session.healthy()).unwrap_or(false){receive_session=None;}
+                    if receive_session.is_none() {
+                        // Setup is separate from polling and only runs when a
+                        // live receive connection does not exist or has failed.
+                        let validation=delivery::receive_validation(&control)?;
+                        let request=json!({"action":"connect_receive","state":saved["backend"],"keychain_saved":true,"test_receive_authorized":true,
+                            "recipient":game["recipient"],"session_hex":game["session_hex"],"validation":validation,"excluded_url_hashes":exclusions,
+                            "support_directory":PathBuf::from(std::env::var("HOME").map_err(|_|ids_access::fail("support_path"))?).join("Library/Application Support/MacPigeon/Transport")});
+                        receive_session=Some(receive_session::ReceiveSession::connect(request,&control)?);
+                    }
+                    let mut received=receive_session.as_mut().unwrap().request(json!({"action":"poll_receive","keychain_saved":true,"test_receive_authorized":true,
+                        "recipient":game["recipient"],"session_hex":game["session_hex"],"excluded_url_hashes":exclusions,"receive_id":command["receive_id"]}),&control)?;
+                    if received["connection_alive"]!=true {receive_session=None;return Err(ids_access::fail("receive_connection_closed"));}
                     if received["state"].is_string(){transport_saved.as_mut().unwrap()["backend"]=received["state"].take();save_transport_ack(&account,transport_saved.as_ref().unwrap(),&mut input)?;}
                     if received["ok"]==true {
                         game=delivery::game(json!({"action":"receive","url":received["url"]}))?;
@@ -417,6 +434,7 @@ async fn main() {
                 if let Err(e)=result {emit(json!({"type":"game_receive_error","failure_stage":e.stage,"message":"Game connection paused. Use Reconnect to try again."}));}
             }
             "send_prepared_test" => {
+                receive_session=None;
                 let mut worker_called=false;
                 let result=async {
                     let saved=transport_saved.as_ref().ok_or(ids_access::fail("saved_identity_required"))?;
@@ -472,6 +490,7 @@ async fn main() {
                 if let Err(e)=result {emit(json!({"type":"test_send_unconfirmed","message":if worker_called {"The test attempt ended without a confirmed result. Delivery is unknown; automatic retry is blocked."} else {"The test could not start, or was already attempted. No automatic retry was made."},"failure_stage":e.stage,"numeric_code":e.code,"send_called":worker_called,"game_acceptance_verified":false}));}
             }
             "receive_selected_test_reply" => {
+                receive_session=None;
                 let result=async {
                     let saved=transport_saved.as_ref().ok_or(ids_access::fail("saved_identity_required"))?;
                     if !saved["backend"].is_string() {return Err(ids_access::fail("registered_identity_required"));}

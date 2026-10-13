@@ -8,6 +8,10 @@ pub struct ReceiveControl {
     deadline: Instant,
 }
 impl ReceiveControl {
+    #[cfg(test)]
+    pub(crate) fn for_test(cancel_path:Option<PathBuf>)->Self {
+        Self {cancel_path,deadline:Instant::now()+Duration::from_secs(5)}
+    }
     pub fn new(id: Option<&str>) -> Result<Self, Failure> {
         let cancel_path = match id {
             Some(id) => {

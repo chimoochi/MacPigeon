@@ -11,6 +11,7 @@ use serde_json::{json,Value as Json};
 use keystore::{software::{SoftwareKeystore,SoftwareKeystoreState,NoEncryptor},init_keystore,RsaKey,KeystoreAccessRules,KeystoreDigest,KeystorePadding};
 use rustpush::{APSState,IDSUser,IDSNGMIdentity,OSConfig,ActivationInfo,DebugMeta,RegisterMeta,PushError,MADRID_SERVICE};
 type Result<T> = std::result::Result<T,&'static str>;
+mod receive_session;
 #[derive(Serialize,Deserialize)]
 struct Saved {version:u32,store:SoftwareKeystoreState,push:APSState,user:IDSUser,identity:IDSNGMIdentity,phone:String}
 fn bin<T:Serialize>(value:&T)->Result<Vec<u8>> {let mut b=vec![];plist::to_writer_binary(&mut b,value).map_err(|_|"state_encoding")?;Ok(b)}
@@ -228,6 +229,7 @@ async fn receive_test(v:&Json)->Result<Json> {
 #[tokio::main]
 async fn main() {
     std::panic::set_hook(Box::new(|_|{}));
+    if std::env::args().any(|arg|arg=="--receive-session"){receive_session::serve().await;return;}
     let mut line=String::new();let n=io::stdin().lock().read_line(&mut line).unwrap_or(0);
     if n==0||n>1_048_576 {emit(json!({"ok":false,"stage":"input_limit"}));return;}
     let v:Json=match serde_json::from_str(&line){Ok(v)=>v,Err(_)=>{emit(json!({"ok":false,"stage":"input_schema"}));return;}};
